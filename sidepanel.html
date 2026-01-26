@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TEMU印钞鸡</title>
+    <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+    <div class="container" id="mainContainer">
+        <div class="card">
+            <div class="card-header" id="cardHeader">
+                <span>当前店铺：<span id="shopNameDisplay">加载中...</span></span>
+                <span class="arrow" id="arrow">▼</span>
+            </div>
+            <div class="card-content" id="cardContent">
+                <div class="cookie-row">
+                    <span class="cookie-label">mallid:</span>
+                    <span class="cookie-value" id="mallidValue"></span>
+                    <button class="copy-btn" id="copyMallidBtn">复制</button>
+                </div>
+                <div class="cookie-row">
+                    <span class="cookie-label">seller_temp:</span>
+                    <span class="cookie-value" id="sellerTempValue"></span>
+                    <button class="copy-btn" id="copySellerTempBtn">复制</button>
+                </div>
+                <div class="cookie-row">
+                    <span class="cookie-label">过期时间:</span>
+                    <span class="cookie-value" id="expiryValue"></span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="buttons-container">
+            <button class="action-btn btn-normal" id="normalBtn">
+                <span class="action-btn-text">常规</span>
+                <span class="action-btn-progress"></span>
+                <span class="action-btn-time" id="normalBtnTime"></span>
+            </button>
+            <div class="config-card" id="normalConfigCard" style="display: none;">
+                <!-- 常规配置卡片内容将通过JavaScript动态填充 -->
+            </div>
+            <button class="action-btn btn-compliance" id="complianceBtn">
+                <span class="action-btn-text">合规</span>
+                <span class="action-btn-progress"></span>
+            </button>
+            <div class="config-card" id="complianceConfigCard" style="display: none;">
+                <!-- 合规配置卡片内容将通过JavaScript动态填充 -->
+            </div>
+            <button class="action-btn btn-pricing" id="pricingBtn">
+                <span class="action-btn-text">核价</span>
+                <span class="action-btn-progress"></span>
+            </button>
+            <div class="config-card" id="pricingConfigCard" style="display: none;">
+                <!-- 核价配置卡片内容将通过JavaScript动态填充 -->
+            </div>
+            <button class="action-btn btn-campaign" id="campaignBtn">
+                <span class="action-btn-text">活动</span>
+                <span class="action-btn-progress"></span>
+            </button>
+            <div class="config-card" id="campaignConfigCard" style="display: none;">
+                <!-- 活动配置卡片内容将通过JavaScript动态填充 -->
+            </div>
+            <button class="action-btn btn-advertising" id="advertisingBtn">
+                <span class="action-btn-text">广告</span>
+                <span class="action-btn-progress"></span>
+            </button>
+            <div class="config-card" id="advertisingConfigCard" style="display: none;">
+                <!-- 广告配置卡片内容将通过JavaScript动态填充 -->
+            </div>
+        </div>
+        
+        <div id="status"></div>
+        
+        <!-- 运行日志区域 -->
+        <div class="log-container">
+            <div class="log-header">
+                <span>运行日志</span>
+                <button class="export-btn" id="exportLogBtn">导出日志</button>
+            </div>
+            <div class="log-content" id="logContent"></div>
+        </div>
+    </div>
+    
+    <script src="jitService.js"></script>
+    <script src="confirmService.js"></script>
+    <script src="replenishService.js"></script>
+    <script src="pricingService.js"></script>
+    <script src="complianceService.js"></script>
+    <script src="activityService.js"></script>
+    <script src="adService.js"></script>
+    <script src="sidepanel.js"></script>
+</body>
+</html>

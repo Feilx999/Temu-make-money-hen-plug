@@ -1,0 +1,2210 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    width: 100%;
+    min-height: 100vh;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    font-size: 12px;
+    color: #333;
+    background-color: #f5f7fa;
+}
+
+.container {
+    padding: 10px;
+}
+
+.card {
+    border: 1px solid #ddd;
+    border-radius: 16px;
+    background-color: white;
+    margin-bottom: 10px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 5px;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.card-header:hover {
+    background-color: #e9ecef;
+}
+
+.arrow {
+    transition: transform 0.2s;
+}
+
+.arrow.rotated {
+    transform: rotate(180deg);
+}
+
+.card-content {
+    padding: 12px;
+    display: none;
+}
+
+.cookie-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 2px;
+    align-items: center;
+}
+
+.cookie-label {
+    font-weight: bold;
+    width: 80px;
+    flex-shrink: 0;
+}
+
+.cookie-value {
+    flex: 1;
+    margin: 0 10px;
+    word-break: break-all;
+    font-family: monospace;
+    font-size: 11px;
+}
+
+.copy-btn {
+    background-color: #3498db;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 8px;
+    flex-shrink: 0;
+}
+
+.copy-btn:hover {
+    background-color: #2980b9;
+}
+
+.empty-state {
+    padding: 30px 15px;
+    text-align: center;
+    color: #95a5a6;
+}
+
+.loading {
+    padding: 20px;
+    text-align: center;
+    color: #7f8c8d;
+}
+
+/* 功能按钮样式 */
+.buttons-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0;
+    align-items: stretch;
+}
+
+.action-btn {
+    width: 100%;
+    padding: 5px 10px;
+    border: 2px solid;
+    border-radius: 9999px;
+    background-color: transparent;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    text-align: left;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.action-btn:hover {
+    opacity: 0.8;
+}
+
+.action-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* 按钮进度条背景 */
+.action-btn::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    width: var(--progress, 0%);
+    background-color: currentColor;
+    opacity: 0.15;
+    transition: width 0.3s ease;
+    z-index: 0;
+    border-radius: 9999px;
+}
+
+.action-btn-text {
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+    min-width: 40px;
+}
+
+.action-btn-progress {
+    position: relative;
+    z-index: 1;
+    font-size: 11px;
+    font-weight: normal;
+    opacity: 0;
+    transition: opacity 0.3s;
+    flex: 1;
+    text-align: center;
+}
+
+.action-btn.has-progress .action-btn-progress {
+    opacity: 1;
+}
+
+.action-btn-time {
+    position: relative;
+    z-index: 1;
+    font-size: 9px;
+    font-weight: normal;
+    color: inherit;
+    opacity: 0.7;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+/* 不同按钮的颜色 */
+.btn-normal { border-color: #FF6B6B; color: #FF6B6B; }
+.btn-compliance { border-color: #4ECDC4; color: #4ECDC4; }
+.btn-pricing { border-color: #45B7D1; color: #45B7D1; }
+.btn-campaign { border-color: #96CEB4; color: #96CEB4; }
+.btn-advertising { border-color: #DDA0DD; color: #DDA0DD; }
+
+/* 配置卡片样式 */
+.config-card {
+    display: none;
+    min-height: 180px;
+    height: auto;
+    margin: -8px 5px 2px 5px;
+    padding: 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background-color: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    width: calc(100% - 12px);
+}
+
+/* 标签页样式 */
+.tabs {
+    display: flex;
+    align-items: center;
+    margin-bottom: 2px;
+    border-bottom: 0px solid #e0e0e0;
+    padding-bottom: 0;
+}
+
+.tab {
+    padding: 0px 16px 2px 16px;
+    cursor: pointer;
+    background-color: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-right: 5px;
+    margin-bottom: -2px;
+    color: #666;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+
+.tab:hover {
+    color: #333;
+}
+
+.tab.active {
+    color: #FF6B6B;
+    border-bottom: 2px solid #FF6B6B;
+    background-color: transparent;
+}
+
+.tab-content {
+    display: none;
+    min-height: 0px;
+}
+
+.tab-content.active {
+    display: block;
+    min-height: fit-content;
+}
+
+/* 配置项样式 - 响应式布局 */
+.config-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 2px;
+    padding: 4px 0;
+    border-bottom: 1px solid #f5f5f5;
+    gap: 8px;
+}
+
+.config-item:last-child {
+    border-bottom: none;
+}
+
+/* 垂直布局的配置项 */
+.config-item.config-item-vertical {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.config-item-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.config-item-extra {
+    padding-left: 78px;
+    margin-top: 4px;
+}
+
+.config-item-label {
+    font-weight: 600;
+    min-width: 70px;
+    flex-shrink: 0;
+    color: #333;
+    font-size: 12px;
+}
+
+.config-item-controls {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-wrap: wrap;
+    flex: 1;
+    min-width: 0;
+}
+
+.select-box {
+    padding: 4px 6px;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    background-color: #fafafa;
+    font-size: 11px;
+    color: #333;
+    cursor: pointer;
+    outline: none;
+    width: 80px;
+}
+
+.select-box:focus {
+    border-color: #4ECDC4;
+}
+
+.select-box option:disabled {
+    color: #ccc;
+}
+
+.input-box {
+    padding: 4px 6px;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    width: 80px;
+    font-size: 11px;
+    outline: none;
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+/* 配置项分组样式 */
+.config-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+/* 开关容器靠右 */
+.switch-container {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+}
+
+/* 配置行样式 */
+.config-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+/* 隐藏数字输入框的步进器 */
+.input-box::-webkit-outer-spin-button,
+.input-box::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.input-box:focus {
+    border-color: #4ECDC4;
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 20px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 20px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #4ECDC4;
+}
+
+input:checked + .slider:before {
+    transform: translateX(20px);
+}
+
+.advanced-link {
+    cursor: pointer;
+    font-size: 12px;
+    text-decoration: none;
+    margin-left: auto;
+    padding: 4px 8px;
+}
+
+.advanced-link.is-advanced {
+    color: #3498db;
+}
+
+.advanced-link.is-normal {
+    color: #2ecc71;
+}
+
+.advanced-link:hover {
+    text-decoration: underline;
+}
+
+/* 控制标签样式 */
+.control-label {
+    font-size: 11px;
+    color: #666;
+    white-space: nowrap;
+    margin-right: 2px;
+}
+
+/* 宽输入框 */
+.input-wide {
+    width: 270px;
+}
+
+/* 运行按钮样式 */
+.run-btn {
+    width: 100%;
+    padding: 5px;
+    margin-top: 5px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    color: white;
+    transition: all 0.2s;
+}
+
+.run-btn:hover:not(:disabled) {
+    opacity: 0.9;
+    transform: translateY(-1px);
+}
+
+.run-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn-run-now {
+    background: linear-gradient(135deg, #FF6B6B, #ee5a5a);
+}
+
+.btn-start-scheduled {
+    background: linear-gradient(135deg, #4ECDC4, #3dbdb5);
+}
+
+/* 日志容器样式 */
+.log-container {
+    margin: 10px 0px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    background-color: white;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+}
+
+.log-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 15px;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+    border-radius: 8px 8px 0 0;
+    font-weight: 600;
+    font-size: 12px;
+    color: #333;
+}
+
+.export-btn {
+    padding: 4px 10px;
+    border: 1px solid #4ECDC4;
+    border-radius: 4px;
+    background-color: white;
+    color: #4ECDC4;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.export-btn:hover {
+    background-color: #4ECDC4;
+    color: white;
+}
+
+.log-content {
+    min-height: 120px;
+    max-height: 300px;
+    padding: 10px;
+    overflow-y: auto;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #555;
+    background-color: #fafafa;
+    border-radius: 0 0 8px 8px;
+}
+
+.log-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.log-content::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.log-content::-webkit-scrollbar-thumb {
+    background: #ccc;
+    border-radius: 3px;
+}
+
+.log-content::-webkit-scrollbar-thumb:hover {
+    background: #aaa;
+}
+
+/* 配置项多行布局 */
+.config-item-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+}
+
+/* 补货配置特殊样式 - 两行布局 */
+.config-item.multi-row .config-item-controls {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.config-item.multi-row .config-item-row {
+    width: 100%;
+    justify-content: flex-end;
+}
+
+/* 货号过滤容器样式 */
+.sku-filter-container {
+    width: 100%;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px dashed #e0e0e0;
+}
+
+.sku-filter-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sku-filter-row .control-label {
+    font-size: 11px;
+    color: #666;
+}
+
+/* 货号过滤textarea样式 */
+.sku-filter-textarea {
+    display: block;
+    width: calc(100vw - 80px);
+    min-height: 66px;
+    max-height: 200px;
+    resize: vertical;
+    font-family: inherit;
+    font-size: 10px;
+    line-height: 1.4;
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    overflow-y: auto;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.sku-filter-textarea:focus {
+    border-color: #4ECDC4;
+    outline: none;
+}
+
+.sku-filter-textarea.valid {
+    border-color: #4CAF50;
+    box-shadow: 0 0 3px rgba(76, 175, 80, 0.3);
+}
+
+.sku-filter-textarea.partial {
+    border-color: #FF9800;
+    box-shadow: 0 0 3px rgba(255, 152, 0, 0.3);
+}
+
+.sku-filter-textarea.invalid {
+    border-color: #f44336;
+    box-shadow: 0 0 3px rgba(244, 67, 54, 0.3);
+}
+
+/* 货号校验提示 */
+.sku-filter-hint {
+    font-size: 8px;
+    margin-top: 2px;
+    padding-left: 0;
+    min-height: 12px;
+}
+
+.sku-filter-hint.valid {
+    color: #4CAF50;
+}
+
+.sku-filter-hint.partial {
+    color: #FF9800;
+}
+
+.sku-filter-hint.invalid {
+    color: #f44336;
+}
+
+/* 错误货号标记样式 */
+.sku-error-mark {
+    text-decoration: underline wavy #f44336;
+}
+
+/* 确认配置多行布局 */
+.confirm-limit-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+
+.confirm-limit-label {
+    font-size: 11px;
+    color: #666;
+    white-space: nowrap;
+}
+
+/* 常规按钮时间显示样式 */
+.action-btn-info {
+    position: absolute;
+    right: 15px;
+    top: 50%;
+    transform: translateY(-50%);
+    text-align: right;
+    font-size: 10px;
+    font-weight: normal;
+    line-height: 1.4;
+    z-index: 1;
+}
+
+.action-btn-info .last-time,
+.action-btn-info .next-time {
+    display: block;
+    opacity: 0.8;
+}
+
+.action-btn.has-info {
+    padding-right: 140px;
+}
+
+/* 双行按钮样式 */
+.action-btn.two-line {
+    padding-top: 8px;
+    padding-bottom: 8px;
+}
+
+/* 核价配置卡片样式 */
+#pricingConfigCard {
+    min-height: 80px;
+    height: auto;
+}
+
+.pricing-search-container {
+    margin-bottom: 10px;
+}
+
+.pricing-search-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.pricing-search-input {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.pricing-search-input:focus {
+    border-color: #45B7D1;
+    outline: none;
+}
+
+.pricing-search-btn {
+    padding: 6px 16px;
+    background: #45B7D1;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.pricing-search-btn:hover {
+    background: #3aa5bf;
+}
+
+.pricing-result-container {
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.pricing-result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.pricing-cat-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.pricing-cat-info-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.pricing-leaf-cat {
+    font-weight: 600;
+    font-size: 12px;
+    color: #333;
+}
+
+.pricing-categories {
+    font-size: 9px;
+    color: #666;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.pricing-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.pricing-cancel-btn,
+.pricing-save-btn {
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 10px;
+    cursor: pointer;
+}
+
+.pricing-cancel-btn {
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    color: #666;
+}
+
+.pricing-save-btn {
+    background: #45B7D1;
+    border: 1px solid #45B7D1;
+    color: white;
+}
+
+.pricing-cancel-btn:hover {
+    background: #eee;
+}
+
+.pricing-save-btn:hover {
+    background: #3aa5bf;
+    border-color: #3aa5bf;
+}
+
+.pricing-table-container {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.pricing-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10px;
+}
+
+.pricing-table th,
+.pricing-table td {
+    padding: 2px 4px;
+    border-bottom: 1px solid #f0f0f0;
+    text-align: left;
+    font-size: 8px;
+}
+
+.pricing-table th {
+    background: #fafafa;
+    font-weight: 600;
+    color: #666;
+    position: sticky;
+    top: 0;
+}
+
+.pricing-table td.spec-name {
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.pricing-input {
+    width: 10vw;
+    padding: 3px 5px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    font-size: 10px;
+    text-align: center;
+}
+
+.pricing-input:focus {
+    border-color: #45B7D1;
+    outline: none;
+}
+
+.pricing-loading {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+    font-size: 12px;
+}
+
+.pricing-error {
+    padding: 8px 12px;
+    background: #fff3f3;
+    color: #d32f2f;
+    font-size: 11px;
+    border-radius: 4px;
+    margin-top: 8px;
+}
+
+/* productId显示样式 */
+.pricing-product-ids {
+    font-size: 10px;
+    color: #888;
+    margin-left: 8px;
+    cursor: default;
+}
+
+/* 核价模板区域样式 */
+.pricing-templates-section {
+    margin-top: 12px;
+}
+
+.pricing-templates-title {
+    font-size: 11px;
+    color: #666;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.pricing-templates-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.no-templates {
+    text-align: center;
+    color: #999;
+    font-size: 11px;
+    padding: 10px;
+}
+
+.template-item {
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.template-header {
+    background: #f8f9fa;
+    cursor: pointer;
+}
+
+.template-header:hover {
+    background: #f0f1f2;
+}
+
+.template-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+}
+
+.template-header-expanded {
+    display: none;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 10px 8px 10px;
+    gap: 8px;
+}
+
+.template-header-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.template-expand-icon {
+    font-size: 10px;
+    color: #666;
+    width: 12px;
+}
+
+.template-leaf-cat {
+    font-weight: 600;
+    font-size: 11px;
+    color: #333;
+}
+
+.template-new-tag {
+    font-size: 9px;
+    color: #4CAF50;
+    background: #e8f5e9;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-weight: 600;
+}
+
+.template-product-ids {
+    font-size: 9px;
+    color: #888;
+    cursor: default;
+}
+
+.template-content {
+    padding: 8px 10px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.template-categories {
+    font-size: 9px;
+    color: #666;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.template-actions-header {
+    display: flex;
+    gap: 6px;
+}
+
+.template-edit-btn,
+.template-delete-btn {
+    padding: 2px 8px;
+    font-size: 10px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+
+.template-edit-btn {
+    background: #e3f2fd;
+    border: 1px solid #90caf9;
+    color: #1976d2;
+}
+
+.template-delete-btn {
+    background: #ffebee;
+    border: 1px solid #ef9a9a;
+    color: #c62828;
+}
+
+.template-edit-btn:hover {
+    background: #bbdefb;
+}
+
+.template-delete-btn:hover {
+    background: #ffcdd2;
+}
+
+.template-table {
+    width: 100%;
+}
+
+.template-edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.template-cancel-edit-btn,
+.template-save-edit-btn {
+    padding: 4px 12px;
+    font-size: 10px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.template-cancel-edit-btn {
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    color: #666;
+}
+
+.template-save-edit-btn {
+    background: #45B7D1;
+    border: none;
+    color: white;
+}
+
+.template-cancel-edit-btn:hover {
+    background: #eee;
+}
+
+.template-save-edit-btn:hover {
+    background: #3aa5bf;
+}
+
+/* 自动核价配置区域样式 */
+.auto-pricing-section {
+    margin-top: 12px;
+}
+
+.auto-pricing-title {
+    font-size: 11px;
+    color: #666;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.auto-pricing-config {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.auto-pricing-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.auto-pricing-label {
+    font-size: 11px;
+    color: #333;
+    font-weight: 600;
+}
+
+.auto-pricing-select {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+.auto-pricing-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.auto-pricing-btn {
+    flex: 1;
+    position: relative;
+    padding: 6px 12px;
+    border: 1px solid #45B7D1;
+    border-radius: 4px;
+    background: #fff;
+    color: #45B7D1;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.auto-pricing-btn:hover {
+    background: #f0f9fb;
+}
+
+.auto-pricing-btn.active {
+    background: #45B7D1;
+    color: white;
+}
+
+.auto-pricing-btn.running {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.auto-pricing-btn-text {
+    position: relative;
+    z-index: 2;
+}
+
+.auto-pricing-btn-progress {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: rgba(69, 183, 209, 0.2);
+    transition: width 0.3s ease;
+    z-index: 1;
+}
+
+.auto-pricing-btn.active .auto-pricing-btn-progress {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.auto-pricing-info {
+    font-size: 10px;
+    color: #666;
+    text-align: center;
+    min-height: 18px;
+}
+
+/* 合规配置卡片样式 */
+#complianceConfigCard {
+    min-height: 80px;
+    height: auto;
+}
+
+.compliance-search-container {
+    margin-bottom: 10px;
+}
+
+.compliance-search-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.compliance-search-input {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.compliance-search-btn {
+    padding: 6px 12px;
+    background: #45B7D1;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.compliance-search-btn:hover {
+    background: #3aa5bf;
+}
+
+.compliance-result-container {
+    margin-top: 10px;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 10px;
+    background: #fafafa;
+}
+
+.compliance-cat-info {
+    margin-bottom: 8px;
+}
+
+.compliance-cat-info-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.compliance-leaf-cat {
+    font-size: 12px;
+    font-weight: 600;
+    color: #333;
+}
+
+.compliance-product-ids {
+    font-size: 11px;
+    color: #666;
+}
+
+.compliance-tasks-list {
+    margin-top: 8px;
+}
+
+.compliance-tasks-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.compliance-task-item {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    background: #f0f0f0;
+}
+
+.compliance-task-item.enabled {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.compliance-task-item.disabled {
+    background: #fafafa;
+    color: #999;
+}
+
+.compliance-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.compliance-cancel-btn,
+.compliance-save-btn {
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.compliance-cancel-btn {
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    color: #666;
+}
+
+.compliance-save-btn {
+    background: #45B7D1;
+    border: none;
+    color: white;
+}
+
+.compliance-cancel-btn:hover {
+    background: #eee;
+}
+
+.compliance-save-btn:hover {
+    background: #3aa5bf;
+}
+
+.compliance-loading,
+.compliance-error {
+    font-size: 12px;
+    padding: 8px;
+    text-align: center;
+}
+
+.compliance-error {
+    color: #e74c3c;
+}
+
+/* 合规模板区域样式 */
+.compliance-templates-section {
+    margin-top: 12px;
+}
+
+.compliance-templates-title {
+    font-size: 11px;
+    color: #666;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.compliance-templates-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.compliance-template-item {
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.compliance-template-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    cursor: pointer;
+}
+
+.compliance-template-header:hover {
+    background: #f9f9f9;
+}
+
+.compliance-template-header-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+}
+
+.compliance-template-expand-icon {
+    font-size: 10px;
+    color: #666;
+}
+
+.compliance-template-cat {
+    font-size: 12px;
+    font-weight: 600;
+    color: #333;
+}
+
+.compliance-template-new-tag {
+    font-size: 9px;
+    background: #ff6b6b;
+    color: white;
+    padding: 1px 4px;
+    border-radius: 2px;
+}
+
+.compliance-template-product-ids {
+    font-size: 10px;
+    color: #888;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.compliance-template-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.compliance-template-delete-btn {
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    background: #fff;
+    border: 1px solid #e74c3c;
+    color: #e74c3c;
+}
+
+.compliance-template-delete-btn:hover {
+    background: #fef0ef;
+}
+
+.compliance-template-content {
+    padding: 10px;
+    border-top: 1px solid #e0e0e0;
+    background: #fafafa;
+}
+
+.no-templates {
+    text-align: center;
+    color: #999;
+    font-size: 11px;
+    padding: 10px;
+}
+
+/* 自动合规配置区域样式 */
+.auto-compliance-section {
+    margin-top: 12px;
+}
+
+.auto-compliance-title {
+    font-size: 11px;
+    color: #666;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.auto-compliance-config {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.auto-compliance-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.auto-compliance-label {
+    font-size: 11px;
+    color: #333;
+    font-weight: 600;
+}
+
+.auto-compliance-select {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+.auto-compliance-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.auto-compliance-btn {
+    flex: 1;
+    position: relative;
+    padding: 6px 12px;
+    border: 1px solid #9b59b6;
+    border-radius: 4px;
+    background: #fff;
+    color: #9b59b6;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.auto-compliance-btn:hover {
+    background: #f9f0fc;
+}
+
+.auto-compliance-btn.active {
+    background: #9b59b6;
+    color: white;
+}
+
+.auto-compliance-btn.running {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.auto-compliance-btn-text {
+    position: relative;
+    z-index: 2;
+}
+
+.auto-compliance-btn-progress {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: rgba(155, 89, 182, 0.2);
+    transition: width 0.3s ease;
+    z-index: 1;
+}
+
+.auto-compliance-btn.active .auto-compliance-btn-progress {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.auto-compliance-info {
+    font-size: 10px;
+    color: #666;
+    text-align: center;
+    min-height: 18px;
+}
+
+/* 全局隐藏数字输入框步进器 */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+input[type="text"]::-webkit-inner-spin-button,
+input[type="text"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* 活动配置卡片样式 */
+#campaignConfigCard {
+    min-height: 80px;
+    height: auto;
+}
+
+.activity-search-container {
+    margin-bottom: 10px;
+}
+
+.activity-search-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.activity-search-input {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 12px;
+}
+
+.activity-search-btn {
+    padding: 6px 12px;
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.activity-search-btn:hover {
+    background: #c0392b;
+}
+
+.activity-result-container {
+    margin-top: 10px;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 10px;
+    background: #fafafa;
+}
+
+.activity-product-info {
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px dashed #e0e0e0;
+}
+
+.activity-product-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 6px;
+}
+
+.activity-cat-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: #e74c3c;
+}
+
+.activity-product-id {
+    font-size: 12px;
+    font-weight: 600;
+    color: #333;
+}
+
+.activity-categories {
+    font-size: 11px;
+    color: #666;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.activity-sku-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.activity-sku-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+}
+
+.activity-sku-header {
+    border-bottom: 1px solid #f0f0f0;
+    padding-bottom: 6px;
+}
+
+.activity-sku-size {
+    font-size: 12px;
+    font-weight: 600;
+    color: #333;
+}
+
+.activity-sku-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+}
+
+/* 同步至其他规格按钮 */
+.activity-sync-btn {
+    background: transparent;
+    border: none;
+    color: #3498db;
+    font-size: 10px;
+    cursor: pointer;
+    padding: 2px 4px;
+    white-space: nowrap;
+}
+
+.activity-sync-btn:hover {
+    color: #2980b9;
+    text-decoration: underline;
+}
+
+.activity-sku-field {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.activity-sku-field label {
+    font-size: 11px;
+    color: #666;
+    white-space: nowrap;
+}
+
+.activity-price-input,
+.activity-stock-input {
+    width: 60px;
+    padding: 4px 6px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+/* 活动选择下拉框 */
+.activity-select-dropdown {
+    position: relative;
+}
+
+.activity-select-trigger {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 6px;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+    background: #fff;
+    cursor: pointer;
+    min-width: 90px;
+}
+
+.activity-select-text {
+    font-size: 11px;
+    color: #333;
+    flex: 1;
+}
+
+.activity-select-arrow {
+    font-size: 8px;
+    color: #999;
+}
+
+.activity-select-panel {
+    position: absolute;
+    top: 100%;
+    left: -55px;
+    min-width: 250px;
+    max-height: 200px;
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 100;
+    margin-top: 2px;
+}
+
+.activity-all-checkbox {
+    margin: 0;
+}
+
+.activity-checkbox-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: 0;
+    cursor: pointer;
+    font-size: 11px;
+    border-bottom: 1px solid #f5f5f5;
+}
+
+.activity-checkbox-item:last-child {
+    border-bottom: none;
+}
+
+.activity-checkbox-item:hover {
+    background: #f5f5f5;
+}
+
+.activity-name {
+    flex: 1;
+    color: #333;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 150px;
+}
+
+.activity-discount {
+    color: #e74c3c;
+    font-weight: 600;
+    flex-shrink: 0;
+    font-size: 10px;
+}
+
+.activity-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.activity-cancel-btn,
+.activity-save-btn {
+    padding: 6px 14px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.activity-cancel-btn {
+    background: #f5f5f5;
+    border: 1px solid #ddd;
+    color: #666;
+}
+
+.activity-save-btn {
+    background: #e74c3c;
+    border: none;
+    color: white;
+}
+
+.activity-cancel-btn:hover {
+    background: #eee;
+}
+
+.activity-save-btn:hover {
+    background: #c0392b;
+}
+
+.activity-loading,
+.activity-error {
+    font-size: 12px;
+    padding: 8px;
+    text-align: center;
+}
+
+.activity-error {
+    color: #e74c3c;
+}
+
+/* 活动模板区域样式 */
+.activity-templates-section {
+    margin-top: 12px;
+}
+
+.activity-templates-title {
+    font-size: 11px;
+    color: #666;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.activity-templates-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.activity-template-item {
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    background: #fff;
+}
+
+.activity-template-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 10px;
+    cursor: pointer;
+}
+
+.activity-template-header:hover {
+    background: #f9f9f9;
+}
+
+.activity-template-header-left {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+}
+
+.activity-template-expand-icon {
+    font-size: 10px;
+    color: #666;
+}
+
+.activity-template-cat {
+    font-size: 12px;
+    font-weight: 600;
+    color: #e74c3c;
+}
+
+.activity-template-spu {
+    font-size: 11px;
+    color: #333;
+}
+
+.activity-template-info {
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px dashed #e0e0e0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.activity-template-categories {
+    font-size: 10px;
+    color: #666;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1;
+}
+
+.activity-template-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.activity-template-edit-btn,
+.activity-template-delete-btn {
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.activity-template-edit-btn {
+    background: #fff;
+    border: 1px solid #3498db;
+    color: #3498db;
+}
+
+.activity-template-edit-btn:hover {
+    background: #ebf5fb;
+}
+
+.activity-template-delete-btn {
+    background: #fff;
+    border: 1px solid #e74c3c;
+    color: #e74c3c;
+}
+
+.activity-template-delete-btn:hover {
+    background: #fef0ef;
+}
+
+.activity-template-content {
+    padding: 10px;
+    border-top: 1px solid #e0e0e0;
+    background: #fafafa;
+}
+
+.activity-template-sku-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.activity-template-sku-item {
+    display: flex;
+    gap: 10px;
+    font-size: 11px;
+    padding: 4px 6px;
+    background: #fff;
+    border-radius: 3px;
+}
+
+.activity-template-sku-item .sku-spec {
+    flex: 1;
+    color: #333;
+}
+
+.activity-template-sku-item .sku-price {
+    color: #e74c3c;
+}
+
+.activity-template-sku-item .sku-stock {
+    color: #666;
+}
+
+.activity-template-sku-item .sku-activity {
+    color: #3498db;
+    font-size: 10px;
+}
+
+/* 自动活动配置区域样式 */
+.auto-activity-section {
+    margin-top: 12px;
+}
+
+.auto-activity-title {
+    font-size: 11px;
+    color: #666;
+    text-align: center;
+    margin-bottom: 8px;
+}
+
+.auto-activity-config {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.auto-activity-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.auto-activity-label {
+    font-size: 11px;
+    color: #333;
+    font-weight: 600;
+}
+
+.auto-activity-select {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+.auto-activity-buttons {
+    display: flex;
+    gap: 8px;
+}
+
+.auto-activity-btn {
+    flex: 1;
+    position: relative;
+    padding: 6px 12px;
+    border: 1px solid #e74c3c;
+    border-radius: 4px;
+    background: #fff;
+    color: #e74c3c;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.auto-activity-btn:hover {
+    background: #fef0ef;
+}
+
+.auto-activity-btn.active {
+    background: #e74c3c;
+    color: white;
+}
+
+.auto-activity-btn.running {
+    pointer-events: none;
+    opacity: 0.7;
+}
+
+.auto-activity-btn-text {
+    position: relative;
+    z-index: 2;
+}
+
+.auto-activity-btn-progress {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: rgba(231, 76, 60, 0.2);
+    transition: width 0.3s ease;
+    z-index: 1;
+}
+
+.auto-activity-btn.active .auto-activity-btn-progress {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.auto-activity-info {
+    font-size: 10px;
+    color: #666;
+    text-align: center;
+    min-height: 18px;
+}
+
+/* 广告配置样式 */
+.ad-config-container {
+    padding: 15px;
+}
+
+.ad-cookie-status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    border: 1px solid #e0e0e0;
+}
+
+.ad-cookie-status-text {
+    font-size: 12px;
+    color: #333;
+}
+
+#adCookieStatusValue {
+    font-weight: bold;
+    margin-left: 5px;
+}
+
+.ad-cookie-btn {
+    padding: 6px 16px;
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    transition: all 0.3s ease;
+}
+
+.ad-cookie-btn:hover {
+    background: #2980b9;
+}
+
+.ad-cookie-btn:disabled {
+    background: #bdc3c7;
+    cursor: not-allowed;
+}
+
+.ad-config-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.ad-config-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ad-config-label {
+    font-size: 12px;
+    color: #555;
+    min-width: 80px;
+}
+
+.ad-roas-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 12px;
+    transition: all 0.3s ease;
+}
+
+.ad-roas-input:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.ad-roas-input:disabled {
+    background: #f5f5f5;
+    cursor: not-allowed;
+}
+
+.ad-interval-select {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 12px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.ad-interval-select:focus {
+    outline: none;
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.ad-interval-select:disabled {
+    background: #f5f5f5;
+    cursor: not-allowed;
+}
+
+.ad-config-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+}
+
+.ad-config-btn {
+    flex: 1;
+    position: relative;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 12px;
+    cursor: pointer;
+    overflow: hidden;
+    transition: all 0.3s ease;
+    background: #3498db;
+    color: white;
+}
+
+.ad-config-btn:hover:not(:disabled) {
+    background: #2980b9;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
+}
+
+.ad-config-btn:disabled {
+    background: #bdc3c7;
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.ad-config-btn.active {
+    background: #e74c3c;
+}
+
+.ad-config-btn.active:hover:not(:disabled) {
+    background: #c0392b;
+}
+
+.ad-config-btn.running {
+    pointer-events: none;
+    opacity: 0.8;
+}
+
+.ad-config-btn-text {
+    position: relative;
+    z-index: 2;
+}
+
+.ad-config-btn-progress {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.3);
+    transition: width 0.3s ease;
+    z-index: 1;
+}
+
+.ad-config-info {
+    font-size: 10px;
+    color: #666;
+    text-align: center;
+    min-height: 18px;
+    margin-top: 8px;
+}
