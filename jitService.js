@@ -7,20 +7,30 @@ const JitService = {
     
     // 日志回调函数
     logCallback: null,
+    progressCallback: null,
     
     // 设置日志回调
     setLogCallback(callback) {
         this.logCallback = callback;
     },
     
+    setProgressCallback(callback) {
+        this.progressCallback = callback;
+    },
+    
     // 输出日志
     log(message) {
-        const timestamp = new Date().toLocaleTimeString();
-        const logMessage = `[${timestamp}] [JIT] ${message}`;
         if (this.logCallback) {
-            this.logCallback(logMessage);
+            this.logCallback(`[JIT] ${message}`);
         }
-        console.log(logMessage);
+        console.log(`[JIT] ${message}`);
+    },
+    
+    updateProgress(current, total, message = '') {
+        if (this.progressCallback) {
+            const percent = total > 0 ? parseFloat(((current / total) * 100).toFixed(2)) : 0;
+            this.progressCallback(percent, message);
+        }
     },
     
     // 获取请求头
@@ -80,11 +90,13 @@ const JitService = {
     // 执行开通JIT
     async executeOpenJit(mallid, sellerTemp, filterType = 'all') {
         this.log('开始执行开通JIT任务...');
+        this.updateProgress(0, 100, '准备中...');
         
         // 获取总数
         const firstPageResult = await this.getFirstPage(mallid, sellerTemp, filterType);
         if (!firstPageResult.success) {
             this.log(`错误: ${firstPageResult.error}`);
+            this.updateProgress(0, 100, '失败');
             return firstPageResult;
         }
         
@@ -92,6 +104,7 @@ const JitService = {
         
         if (total === 0) {
             this.log('没有需要开通JIT的商品');
+            this.updateProgress(100, 100, '完成');
             return { success: true, successCount: 0, total: 0, failReasons: {} };
         }
         
@@ -102,7 +115,7 @@ const JitService = {
         let failReasons = {};
         
         for (let page = 1; page <= maxPage; page++) {
-            this.log(`正在处理第 ${page}/${maxPage} 页...`);
+            this.updateProgress(page - 1, maxPage, `处理中 ${page}/${maxPage} 页`);
             
             // 获取商品列表
             const payload = {
@@ -139,12 +152,23 @@ const JitService = {
                             dataList = result.result?.pageItems || [];
                             querySuccess = true;
                             break;
+                        } else {
+                            this.log(`失败响应: ${JSON.stringify(result)}`);
+                        }
+                    } else {
+                        try {
+                            const jsonResponse = await response.json();
+                            this.log(`失败响应: ${JSON.stringify(jsonResponse)}`);
+                        } catch {
+                            const textResponse = await response.text();
+                            this.log(`失败响应(HTTP ${response.status}): ${textResponse}`);
                         }
                     }
                 } catch (error) {
                     if (retry === this.MAX_RETRY - 1) {
                         const reason = `请求第${page}页数据失败`;
                         failReasons[reason] = (failReasons[reason] || 0) + 1;
+                        this.log(`失败异常: ${error.message}`);
                     }
                 }
             }
@@ -189,6 +213,7 @@ const JitService = {
                                     const reason = failItem.errorMsg || '开JIT失败';
                                     failReasons[reason] = (failReasons[reason] || 0) + 1;
                                 }
+                                this.log(`失败响应: ${JSON.stringify(result)}`);
                             } else {
                                 successCount += jitTaskList.length;
                             }
@@ -198,23 +223,36 @@ const JitService = {
                                 const errorMsg = result.errorMsg || '开JIT失败';
                                 failReasons[errorMsg] = (failReasons[errorMsg] || 0) + jitTaskList.length;
                             }
+                            this.log(`失败响应: ${JSON.stringify(result)}`);
+                        }
+                    } else {
+                        try {
+                            const jsonResponse = await response.json();
+                            this.log(`失败响应: ${JSON.stringify(jsonResponse)}`);
+                        } catch {
+                            const textResponse = await response.text();
+                            this.log(`失败响应(HTTP ${response.status}): ${textResponse}`);
                         }
                     }
                 } catch (error) {
                     if (retry === this.MAX_RETRY - 1) {
                         const reason = `第${page}页开JIT请求失败`;
                         failReasons[reason] = (failReasons[reason] || 0) + jitTaskList.length;
+                        this.log(`失败异常: ${error.message}`);
                     }
                 }
             }
         }
         
+        this.updateProgress(100, 100, '完成');
+        
         // 输出结果
+        this.log(`成功开通 ${successCount}/${total} 个商品的JIT`);
         if (Object.keys(failReasons).length > 0) {
-            this.log(`成功开通 ${successCount}/${total} 个商品的JIT`);
-            this.log(`失败原因: ${JSON.stringify(failReasons)}`);
-        } else {
-            this.log(`成功开通 ${successCount}/${total} 个商品的JIT`);
+            const reasonStrings = Object.entries(failReasons)
+                .map(([reason, count]) => `${reason}: ${count}`)
+                .join(', ');
+            this.log(`失败原因: ${reasonStrings}`);
         }
         
         return {

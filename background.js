@@ -455,15 +455,24 @@ async function runScheduledTasks() {
 }
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
-    if (alarm.name === 'cleanOldLogs') { cleanOldLogs(); return; }
+    if (alarm.name === 'cleanOldLogs') { 
+        cleanOldLogs(); 
+        return; 
+    }
     
+    // All scheduled tasks (jitTask, confirmTask, replenishTask) are handled by their individual alarms
+    // Each alarm executes its specific task independently
     const cache = await getCachedCookies();
     const config = await getScheduledConfig();
     if (!cache || !config) return;
     
-    if (alarm.name === 'jitTask' && config.jitEnabled) await executeJitTask(cache.mallid, config.jitFilterType);
-    else if (alarm.name === 'confirmTask' && config.confirmEnabled) await executeConfirmTask(cache.mallid, config.maxConfirmCount);
-    else if (alarm.name === 'replenishTask' && config.replenishEnabled) await executeReplenishTask(cache.mallid, config.replenishStock || 1000, config.replenishThreshold || 0.95, config.skuFilter || '');
+    if (alarm.name === 'jitTask' && config.jitEnabled) {
+        await executeJitTask(cache.mallid, config.jitFilterType);
+    } else if (alarm.name === 'confirmTask' && config.confirmEnabled) {
+        await executeConfirmTask(cache.mallid, config.maxConfirmCount);
+    } else if (alarm.name === 'replenishTask' && config.replenishEnabled) {
+        await executeReplenishTask(cache.mallid, config.replenishStock || 1000, config.replenishThreshold || 0.95, config.skuFilter || '');
+    }
 });
 
 // ==================== 消息处理 ====================
@@ -490,7 +499,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             if (config.replenishEnabled && config.replenishInterval > 0) {
                 chrome.alarms.create('replenishTask', { periodInMinutes: config.replenishInterval });
             }
-            runScheduledTasks();
+            // Don't call runScheduledTasks() here - let the alarms handle execution
+            // This prevents duplicate execution at startup
+            addLog('[定时] 定时任务已启动，等待首次执行');
             sendResponse({ success: true });
         });
         return true;

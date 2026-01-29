@@ -29,7 +29,7 @@ const ActivityService = {
     
     updateProgress(current, total, message = '') {
         if (this.progressCallback) {
-            const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+            const percent = total > 0 ? parseFloat(((current / total) * 100).toFixed(2)) : 0;
             this.progressCallback(percent, message);
         }
     },
@@ -75,8 +75,10 @@ const ActivityService = {
                     totalCount: parsed.rows.length
                 };
             }
+            this.addLog(`[活动] 失败响应: ${JSON.stringify(data)}`);
             return { success: false, message: data.error_msg || '查询失败' };
         } catch (e) {
+            this.addLog(`[活动] 失败异常: ${e.message}`);
             return { success: false, message: e.message };
         }
     },
@@ -186,8 +188,10 @@ const ActivityService = {
                 const parsed = this.parseTemplateProducts(templateProducts, goodsResult);
                 return { success: true, data: parsed };
             }
+            this.addLog(`[活动] 失败响应: ${JSON.stringify(data)}`);
             return { success: false, message: data.error_msg || '查询失败' };
         } catch (e) {
+            this.addLog(`[活动] 失败异常: ${e.message}`);
             return { success: false, message: e.message };
         }
     },
@@ -310,8 +314,10 @@ const ActivityService = {
                 const templateProducts = data.result?.templateProducts || [];
                 return { success: true, data: templateProducts };
             }
+            this.addLog(`[活动] 失败响应: ${JSON.stringify(data)}`);
             return { success: false, message: data.error_msg || '查询失败' };
         } catch (e) {
+            this.addLog(`[活动] 失败异常: ${e.message}`);
             return { success: false, message: e.message };
         }
     },
@@ -342,8 +348,10 @@ const ActivityService = {
             if (data.success) {
                 return { success: true, fingerprint: fingerprint };
             }
+            this.addLog(`[活动] 失败响应: ${JSON.stringify(data)}`);
             return { success: false, message: data.error_msg || '提交失败' };
         } catch (e) {
+            this.addLog(`[活动] 失败异常: ${e.message}`);
             return { success: false, message: e.message };
         }
     },
@@ -377,8 +385,10 @@ const ActivityService = {
             if (data.success && data.errorCode === 1000000) {
                 return { success: true, total: data.result?.total || 0 };
             }
+            this.addLog(`[活动] 失败响应: ${JSON.stringify(data)}`);
             return { success: false, total: 0 };
         } catch (e) {
+            this.addLog(`[活动] 失败异常: ${e.message}`);
             return { success: false, total: 0 };
         }
     },
@@ -412,8 +422,10 @@ const ActivityService = {
                 const spuList = pageItems.map(item => item.productId).filter(id => id > 0);
                 return { success: true, spuList: spuList };
             }
+            this.log(`失败响应: ${JSON.stringify(data)}`);
             return { success: false, spuList: [] };
         } catch (e) {
+            this.log(`失败异常: ${e.message}`);
             return { success: false, spuList: [] };
         }
     },
@@ -448,8 +460,10 @@ const ActivityService = {
                 const timeStamp = pageItems.length > 0 ? pageItems[pageItems.length - 1].createdAt : null;
                 return { success: true, spuList: spuList, timeStamp: timeStamp };
             }
+            this.log(`失败响应: ${JSON.stringify(data)}`);
             return { success: false, spuList: [], timeStamp: null };
         } catch (e) {
+            this.log(`失败异常: ${e.message}`);
             return { success: false, spuList: [], timeStamp: null };
         }
     },
@@ -571,8 +585,10 @@ const ActivityService = {
                     recordIdList
                 };
             }
+            this.log(`失败响应: ${JSON.stringify(data)}`);
             return { success: false, message: data.error_msg || '查询失败' };
         } catch (e) {
+            this.log(`失败异常: ${e.message}`);
             return { success: false, message: e.message };
         }
     },
@@ -610,9 +626,11 @@ const ActivityService = {
                         const errorMsg = detail.errorMsg || '未知错误';
                         failReasons[errorMsg] = (failReasons[errorMsg] || 0) + 1;
                     }
+                } else {
+                    this.log(`失败响应: ${JSON.stringify(data)}`);
                 }
             } catch (e) {
-                // 继续处理下一个recordId
+                this.log(`失败异常: ${e.message}`);
                 continue;
             }
         }
@@ -650,7 +668,7 @@ const ActivityService = {
                 
                 return { success: true, data: failReasons, total: failDetails.length };
             }
-            return { success: false, message: data.error_msg || '查询失败' };
+            return { success: false, message: JSON.stringify(data) };
         } catch (e) {
             return { success: false, message: e.message };
         }

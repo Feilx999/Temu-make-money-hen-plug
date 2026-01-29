@@ -40,12 +40,16 @@ document.addEventListener('DOMContentLoaded', function() {
     let scheduledCountdownInterval = null;
     
     function updateButtonProgress(button, progress) {
-        currentProgress = progress;
-        button.style.setProperty('--progress', progress + '%');
-        if (progress > 0) {
+        const floatProgress = parseFloat(progress.toFixed(2));
+        currentProgress = floatProgress;
+        button.style.setProperty('--progress', floatProgress + '%');
+        if (floatProgress > 0) {
             button.classList.add('has-progress');
             const progressSpan = button.querySelector('.action-btn-progress');
-            if (progressSpan) progressSpan.textContent = Math.round(progress) + '%';
+            if (progressSpan) {
+                const displayProgress = floatProgress >= 100 ? '100%' : floatProgress.toFixed(2) + '%';
+                progressSpan.textContent = displayProgress;
+            }
         } else {
             button.classList.remove('has-progress');
             const progressSpan = button.querySelector('.action-btn-progress');
@@ -122,18 +126,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // 页面加载时更新按钮信息
     setTimeout(updateNormalBtnInfo, 100);
     
-    // 日志功能
+    // 日志功能 - 只发送到后台，由后台统一广播回来后再显示，避免重复
     function addLog(message) {
-        const now = new Date();
-        const timestamp = now.toLocaleTimeString();
-        const logMessage = `[${timestamp}] ${message}`;
-        logMessages.push(logMessage);
-        const logLine = document.createElement('div');
-        logLine.textContent = logMessage;
-        logContent.appendChild(logLine);
-        logContent.scrollTop = logContent.scrollHeight;
-        // 同时发送到后台保存到IndexedDB
-        chrome.runtime.sendMessage({ action: 'addLog', message: logMessage });
+        // 直接发送到后台，由后台统一处理和广播
+        chrome.runtime.sendMessage({ action: 'addLog', message: message });
     }
     
     // 从后台加载最近日志
@@ -199,10 +195,28 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // 设置服务日志回调
-    if (typeof JitService !== 'undefined') JitService.setLogCallback(addLog);
-    if (typeof ConfirmService !== 'undefined') ConfirmService.setLogCallback(addLog);
-    if (typeof ReplenishService !== 'undefined') ReplenishService.setLogCallback(addLog);
+    // 设置服务日志回调和进度回调
+    if (typeof JitService !== 'undefined') {
+        JitService.setLogCallback(addLog);
+        JitService.setProgressCallback((percent, message) => {
+            const jitBtn = document.getElementById('jitBtn');
+            if (jitBtn) updateButtonProgress(jitBtn, percent);
+        });
+    }
+    if (typeof ConfirmService !== 'undefined') {
+        ConfirmService.setLogCallback(addLog);
+        ConfirmService.setProgressCallback((percent, message) => {
+            const confirmBtn = document.getElementById('confirmBtn');
+            if (confirmBtn) updateButtonProgress(confirmBtn, percent);
+        });
+    }
+    if (typeof ReplenishService !== 'undefined') {
+        ReplenishService.setLogCallback(addLog);
+        ReplenishService.setProgressCallback((percent, message) => {
+            const replenishBtn = document.getElementById('replenishBtn');
+            if (replenishBtn) updateButtonProgress(replenishBtn, percent);
+        });
+    }
     
     // 缓存Cookie到后台（带过期时间）
     async function cacheCookiesToBackground(mallid, sellerTemp, shopName, expiresAt = null) {
@@ -312,13 +326,24 @@ document.addEventListener('DOMContentLoaded', function() {
             const timeout = 15000;
             
             while (Date.now() - startTime < timeout) {
-                const adCookies = await getAdCookies();
-                if (adCookies.auth_token) {
+                const cookies = await chrome.cookies.getAll({domain: 'ads.temu.com'});
+                const adCookieObj = {};
+                let authTokenExpires = null;
+                
+                for (const cookie of cookies) {
+                    adCookieObj[cookie.name] = cookie.value;
+                    if (cookie.name === 'auth_token' && cookie.expirationDate) {
+                        authTokenExpires = cookie.expirationDate * 1000;
+                    }
+                }
+                
+                if (adCookieObj.auth_token) {
                     addLog('[广告] 成功获取广告Cookie');
-                    // 保存到storage，同时保存获取时间
+                    // 保存到storage，同时保存Cookie的实际过期时间
                     await chrome.storage.local.set({ 
-                        adCookies: adCookies,
-                        adCookiesTimestamp: Date.now()
+                        adCookies: adCookieObj,
+                        adCookiesTimestamp: Date.now(),
+                        adCookiesExpires: authTokenExpires || (Date.now() + 16 * 60 * 60 * 1000)
                     });
                     return true;
                 }
@@ -528,13 +553,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         // 检查广告Cookie是否存在或过期
-        const stored = await chrome.storage.local.get(['adCookies', 'adCookiesTimestamp']);
+        const stored = await chrome.storage.local.get(['adCookies', 'adCookiesTimestamp', 'adCookiesExpires']);
         const adCookies = stored.adCookies || {};
         const timestamp = stored.adCookiesTimestamp || 0;
+        const expiresAt = stored.adCookiesExpires || (timestamp + 16 * 60 * 60 * 1000);
         const hasAuthToken = !!adCookies.auth_token;
         
-        // Cookie过期时间设为24小时
-        const cookieExpired = (Date.now() - timestamp) > (24 * 60 * 60 * 1000);
+        // 使用Cookie的实际过期时间
+        const cookieExpired = Date.now() >= expiresAt;
         
         if (!hasAuthToken || cookieExpired) {
             if (cookieExpired && hasAuthToken) {
@@ -625,27 +651,31 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             
             <div class="tab-content" id="scheduledConfigContent">
-                <div class="config-item">
-                    <span class="config-item-label">JIT</span>
-                    <div class="config-item-controls">
+                <div class="config-item config-item-vertical">
+                    <div class="config-item-header">
+                        <span class="config-item-label">JIT</span>
+                        <div class="config-item-controls">
+                            <div class="config-group">
+                                <span class="control-label">定时:</span>
+                                <select class="select-box" id="jitIntervalSelect">
+                                    <option value="0" selected>关闭</option>
+                                    <option value="1">1分钟</option>
+                                    <option value="30">30分钟</option>
+                                    <option value="60">1小时</option>
+                                    <option value="120">2小时</option>
+                                    <option value="180">3小时</option>
+                                    <option value="240">4小时</option>
+                                    <option value="720">12小时</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="config-item-extra">
                         <div class="config-group">
                             <span class="control-label">过滤:</span>
                             <select class="select-box" id="scheduledJitFilterSelect">
                                 <option value="all">全部商品</option>
                                 <option value="first" disabled>仅首单商品</option>
-                            </select>
-                        </div>
-                        <div class="config-group">
-                            <span class="control-label">定时:</span>
-                            <select class="select-box" id="jitIntervalSelect">
-                                <option value="0" selected>关闭</option>
-                                <option value="1">1分钟</option>
-                                <option value="30">30分钟</option>
-                                <option value="60">1小时</option>
-                                <option value="120">2小时</option>
-                                <option value="180">3小时</option>
-                                <option value="240">4小时</option>
-                                <option value="720">12小时</option>
                             </select>
                         </div>
                     </div>
@@ -655,14 +685,29 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="config-item-header">
                         <span class="config-item-label">确认</span>
                         <div class="config-item-controls">
-                            <div class="config-group advanced-field" style="display: none;">
-                                <span class="control-label">限制:</span>
-                                <label class="switch">
-                                    <input type="checkbox" id="confirmLimitSwitch">
-                                    <span class="slider"></span>
-                                </label>
-                                <span class="control-label">  *限制每日确认数量</span>
+                            <div class="config-group">
+                                <span class="control-label">定时:</span>
+                                <select class="select-box" id="confirmIntervalSelect">
+                                    <option value="0" selected>关闭</option>
+                                    <option value="1">1分钟</option>
+                                    <option value="30">30分钟</option>
+                                    <option value="60">1小时</option>
+                                    <option value="120">2小时</option>
+                                    <option value="180">3小时</option>
+                                    <option value="240">4小时</option>
+                                    <option value="720">12小时</option>
+                                </select>
                             </div>
+                        </div>
+                    </div>
+                    <div class="config-item-extra advanced-field" style="display: none;">
+                        <div class="config-group">
+                            <span class="control-label">限制:</span>
+                            <label class="switch">
+                                <input type="checkbox" id="confirmLimitSwitch">
+                                <span class="slider"></span>
+                            </label>
+                            <span class="control-label">  *限制每日确认数量</span>
                         </div>
                     </div>
                     <div class="config-item-extra advanced-field confirm-limit-field" style="display: none;">
@@ -671,26 +716,28 @@ document.addEventListener('DOMContentLoaded', function() {
                             <input type="number" class="input-box" id="maxConfirmInput" value="100">
                         </div>
                     </div>
-                    <div class="config-item-extra">
-                        <div class="config-group">
-                            <span class="control-label">定时:</span>
-                            <select class="select-box" id="confirmIntervalSelect">
-                                <option value="0" selected>关闭</option>
-                                <option value="1">1分钟</option>
-                                <option value="30">30分钟</option>
-                                <option value="60">1小时</option>
-                                <option value="120">2小时</option>
-                                <option value="180">3小时</option>
-                                <option value="240">4小时</option>
-                                <option value="720">12小时</option>
-                            </select>
-                        </div>
-                    </div>
                 </div>
                 
-                <div class="config-item" id="replenishConfigItem">
-                    <span class="config-item-label">补货</span>
-                    <div class="config-item-controls">
+                <div class="config-item config-item-vertical" id="replenishConfigItem">
+                    <div class="config-item-header">
+                        <span class="config-item-label">补货</span>
+                        <div class="config-item-controls">
+                            <div class="config-group">
+                                <span class="control-label">定时:</span>
+                                <select class="select-box" id="replenishIntervalSelect">
+                                    <option value="0" selected>关闭</option>
+                                    <option value="1">1分钟</option>
+                                    <option value="30">30分钟</option>
+                                    <option value="60">1小时</option>
+                                    <option value="120">2小时</option>
+                                    <option value="180">3小时</option>
+                                    <option value="240">4小时</option>
+                                    <option value="720">12小时</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="config-item-extra">
                         <div class="config-group">
                             <span class="control-label">库存:</span>
                             <input type="number" class="input-box" id="scheduledReplenishStockInput" value="1000">
@@ -699,26 +746,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             <span class="control-label">阈值:</span>
                             <input type="number" class="input-box" id="replenishThresholdInput" value="0.95" step="0.01">
                         </div>
-                        <div class="config-group">
-                            <span class="control-label">定时:</span>
-                            <select class="select-box" id="replenishIntervalSelect">
-                                <option value="0" selected>关闭</option>
-                                <option value="1">1分钟</option>
-                                <option value="30">30分钟</option>
-                                <option value="60">1小时</option>
-                                <option value="120">2小时</option>
-                                <option value="180">3小时</option>
-                                <option value="240">4小时</option>
-                                <option value="720">12小时</option>
-                            </select>
-                        </div>
                     </div>
                     <div class="sku-filter-container advanced-field" style="display: none;">
                         <div class="sku-filter-row">
                             <textarea class="sku-filter-textarea" id="skuFilterInput" placeholder=" 货号过滤&#10; 使用 51*、*abc、12*34 等规则进行过滤 &#10; 多个规则用空格或者回车分隔 &#10; 被过滤的规则不会被添加库存" rows="2"></textarea>
                             <div class="sku-filter-hint" id="skuFilterHint"></div>
                         </div>
-                    
                     </div>
                 </div>
                 
@@ -955,13 +988,11 @@ document.addEventListener('DOMContentLoaded', function() {
             // 顺序执行任务以确保进度条正确显示
             if (jitSwitch.checked) {
                 try {
-                    addLog('=== 开始执行JIT任务 ===');
                     await JitService.executeOpenJit(mallid, '', document.getElementById('jitFilterSelect').value);
                     taskProgress.jit = taskWeight;
                     updateTotalProgress();
-                    addLog('=== JIT任务完成 ===');
                 } catch (e) {
-                    addLog('JIT任务出错: ' + e.message);
+                    addLog('[JIT] 任务出错: ' + e.message);
                     taskProgress.jit = taskWeight;
                     updateTotalProgress();
                 }
@@ -969,13 +1000,11 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (confirmSwitch.checked) {
                 try {
-                    addLog('=== 开始执行确认任务 ===');
                     await ConfirmService.executeConfirm(mallid, '');
                     taskProgress.confirm = taskWeight;
                     updateTotalProgress();
-                    addLog('=== 确认任务完成 ===');
                 } catch (e) {
-                    addLog('确认任务出错: ' + e.message);
+                    addLog('[确认] 任务出错: ' + e.message);
                     taskProgress.confirm = taskWeight;
                     updateTotalProgress();
                 }
@@ -983,14 +1012,12 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (replenishSwitch.checked) {
                 try {
-                    addLog('=== 开始执行补货任务 ===');
                     const stock = parseInt(document.getElementById('replenishStockInput').value) || 1000;
                     await ReplenishService.executeReplenish(mallid, '', stock, 0.95, '');
                     taskProgress.replenish = taskWeight;
                     updateTotalProgress();
-                    addLog('=== 补货任务完成 ===');
                 } catch (e) {
-                    addLog('补货任务出错: ' + e.message);
+                    addLog('[补货] 任务出错: ' + e.message);
                     taskProgress.replenish = taskWeight;
                     updateTotalProgress();
                 }
@@ -998,7 +1025,6 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // 完成后显示100%
             updateButtonProgress(normalBtn, 100);
-            addLog('=== 所有任务执行完成 ===');
             
             // 保存完成时间
             saveTaskCompleteTime();
@@ -1146,7 +1172,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
         `;
-        autoComplianceEventsInitialized = false;
         setupComplianceConfigCardEvents();
         loadSavedComplianceTemplates();
         setupAutoComplianceEvents();
@@ -1225,9 +1250,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
         `;
-        autoPricingEventsInitialized = false;
         setupPricingConfigCardEvents();
-        loadSavedPricingTemplates();
+        loadSavedTemplates();
         setupAutoPricingEvents();
     }
     
@@ -1332,7 +1356,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 searchInput.value = '';
                 currentTemplateList = [];
                 // 刷新模板列表
-                loadSavedPricingTemplates(currentGroupIndex);
+                loadSavedTemplates(currentGroupIndex);
             });
         });
         
@@ -1840,7 +1864,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function setupAutoPricingEvents() {
         // 防止重复初始化
         if (autoPricingEventsInitialized) return;
-        autoPricingEventsInitialized = false;
+        autoPricingEventsInitialized = true;
         
         const intervalSelect = document.getElementById('autoPricingInterval');
         const nowBtn = document.getElementById('autoPricingNowBtn');
@@ -1855,7 +1879,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         PricingService.setProgressCallback((percent, message) => {
-            updateAutoPricingProgress(nowBtn, percent, message);
+            const mainBtn = document.getElementById('pricingBtn');
+            updateButtonProgress(mainBtn, percent);
         });
         
         // 从缓存加载配置
@@ -1929,8 +1954,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const mallid = mallidCookie.value;
             const sellerTemp = sellerTempCookie.value;
             
-            const cachedCookies = await chrome.storage.local.get('cachedCookies');
-            const shopName = cachedCookies.cachedCookies?.shopName || '未知店铺';
+            const storedData = await chrome.storage.local.get('cookieCache');
+            const shopName = storedData.cookieCache?.shopName || '未知店铺';
             
             const result = await PricingService.executePricingTask(mallid, sellerTemp, shopName);
             
@@ -1940,6 +1965,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             updateAutoPricingProgress(nowBtn, 100, '完成');
             infoEl.textContent = `最后执行: ${new Date().toLocaleTimeString()}`;
+            // 更新主按钮的时间显示
+            const pricingBtnTime = document.getElementById('pricingBtnTime');
+            if (pricingBtnTime) pricingBtnTime.textContent = new Date().toLocaleTimeString();
             
             // 清除核价模板的new标签
             await clearPricingTemplatesNewTag();
@@ -2029,21 +2057,11 @@ document.addEventListener('DOMContentLoaded', function() {
         infoEl.textContent = '';
     }
     
-    // 更新核价进度
+    // 更新核价进度（已迁移到主按钮，保留兼容）
     function updateAutoPricingProgress(btnEl, percent, message) {
-        if (!btnEl) return;
-        
-        const progressBar = btnEl.querySelector('.auto-pricing-btn-progress');
-        const textEl = btnEl.querySelector('.auto-pricing-btn-text');
-        
-        if (progressBar) {
-            progressBar.style.width = `${percent}%`;
-        }
-        
-        if (textEl && message) {
-            textEl.textContent = message;
-        } else if (textEl && !message) {
-            textEl.textContent = '立即核价';
+        const mainBtn = document.getElementById('pricingBtn');
+        if (mainBtn) {
+            updateButtonProgress(mainBtn, percent);
         }
     }
     
@@ -2190,7 +2208,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const productIdsEl = document.getElementById('complianceProductIds');
         const tasksListEl = document.getElementById('complianceTasksList');
         
-        leafCatEl.textContent = `类目ID: ${template.cat_id}`;
+        leafCatEl.textContent = template.cat_name ? `类目: ${template.cat_name}` : `类目ID: ${template.cat_id}`;
         productIdsEl.textContent = `来源: ${template.input_spu.join(', ')}`;
         
         // 渲染任务列表
@@ -2206,13 +2224,59 @@ document.addEventListener('DOMContentLoaded', function() {
             tasksHtml += `<span class="compliance-task-item ${isEnabled ? 'enabled' : 'disabled'}">${icon} ${taskName}</span>`;
         }
         
-        // 添加实拍图状态
+        // 添加实拍图状态（可展开显示图片链接）
         if (realPictureList.length > 0) {
-            tasksHtml += `<span class="compliance-task-item enabled">☑ 实拍图(${realPictureList.length}张)</span>`;
+            // 提取所有图片URL
+            const imageUrls = [];
+            for (const pos of realPictureList) {
+                for (const skuPhoto of (pos.sku_photo_info_list || [])) {
+                    for (const img of (skuPhoto.image_list || [])) {
+                        if (img.image_url) {
+                            imageUrls.push(img.image_url);
+                        }
+                    }
+                }
+            }
+            
+            if (imageUrls.length > 0) {
+                tasksHtml += `
+                    <div class="compliance-real-photo-wrapper">
+                        <span class="compliance-task-item enabled compliance-real-photo-toggle" style="cursor: pointer;">
+                            ☑ 实拍图(${imageUrls.length}张) <span class="real-photo-expand-icon">▶</span>
+                        </span>
+                        <div class="compliance-real-photo-urls" style="display: none;">
+                            ${imageUrls.map((url, idx) => `
+                                <div class="real-photo-url-item">
+                                    图${idx + 1}：<a href="${url}" target="_blank" class="real-photo-link" title="${url}">${url.length > 50 ? url.substring(0, 50) + '...' : url}</a>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            } else {
+                tasksHtml += `<span class="compliance-task-item enabled">☑ 实拍图(${realPictureList.length}张)</span>`;
+            }
         }
         
         tasksHtml += '</div>';
         tasksListEl.innerHTML = tasksHtml;
+        
+        // 绑定实拍图展开事件
+        const realPhotoToggle = tasksListEl.querySelector('.compliance-real-photo-toggle');
+        if (realPhotoToggle) {
+            realPhotoToggle.addEventListener('click', function() {
+                const wrapper = this.closest('.compliance-real-photo-wrapper');
+                const urlsDiv = wrapper.querySelector('.compliance-real-photo-urls');
+                const icon = this.querySelector('.real-photo-expand-icon');
+                if (urlsDiv.style.display === 'none') {
+                    urlsDiv.style.display = 'block';
+                    icon.textContent = '▼';
+                } else {
+                    urlsDiv.style.display = 'none';
+                    icon.textContent = '▶';
+                }
+            });
+        }
     }
     
     // 加载已保存的合规模板
@@ -2240,7 +2304,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="compliance-template-header">
                         <div class="compliance-template-header-left">
                             <span class="compliance-template-expand-icon">▶</span>
-                            <span class="compliance-template-cat">类目: ${template.cat_id}</span>
+                            <span class="compliance-template-cat">${template.cat_name ? `类目: ${template.cat_name}` : `类目ID: ${template.cat_id}`}</span>
                             ${template.isNew ? '<span class="compliance-template-new-tag">new</span>' : ''}
                             <span class="compliance-template-product-ids">来源: ${template.input_spu.join(', ')}</span>
                         </div>
@@ -2256,8 +2320,38 @@ document.addEventListener('DOMContentLoaded', function() {
                 html += `<span class="compliance-task-item enabled">☑ ${taskName}</span>`;
             }
             
+            // 添加实拍图（可展开显示图片链接）
             if (realPictureList.length > 0) {
-                html += `<span class="compliance-task-item enabled">☑ 实拍图(${realPictureList.length}张)</span>`;
+                // 提取所有图片URL
+                const imageUrls = [];
+                for (const pos of realPictureList) {
+                    for (const skuPhoto of (pos.sku_photo_info_list || [])) {
+                        for (const img of (skuPhoto.image_list || [])) {
+                            if (img.image_url) {
+                                imageUrls.push(img.image_url);
+                            }
+                        }
+                    }
+                }
+                
+                if (imageUrls.length > 0) {
+                    html += `
+                        <div class="compliance-real-photo-wrapper">
+                            <span class="compliance-task-item enabled compliance-real-photo-toggle" style="cursor: pointer;" data-index="${i}">
+                                ☑ 实拍图(${imageUrls.length}张) <span class="real-photo-expand-icon">▶</span>
+                            </span>
+                            <div class="compliance-real-photo-urls" style="display: none;">
+                                ${imageUrls.map((url, idx) => `
+                                    <div class="real-photo-url-item">
+                                        图${idx + 1}：<a href="${url}" target="_blank" class="real-photo-link" title="${url}">${url.length > 50 ? url.substring(0, 50) + '...' : url}</a>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    html += `<span class="compliance-task-item enabled">☑ 实拍图(${realPictureList.length}张)</span>`;
+                }
             }
             
             html += `
@@ -2269,6 +2363,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         templatesList.innerHTML = html;
         setupComplianceTemplateEvents();
+        setupComplianceRealPhotoEvents();
         
         // 清除new标记
         setTimeout(async () => {
@@ -2330,6 +2425,28 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
+    // 实拍图展开事件设置
+    function setupComplianceRealPhotoEvents() {
+        const templatesList = document.getElementById('complianceTemplatesList');
+        if (!templatesList) return;
+        
+        templatesList.querySelectorAll('.compliance-real-photo-toggle').forEach(toggle => {
+            toggle.addEventListener('click', function(e) {
+                e.stopPropagation();
+                const wrapper = this.closest('.compliance-real-photo-wrapper');
+                const urlsDiv = wrapper.querySelector('.compliance-real-photo-urls');
+                const icon = this.querySelector('.real-photo-expand-icon');
+                if (urlsDiv.style.display === 'none') {
+                    urlsDiv.style.display = 'block';
+                    icon.textContent = '▼';
+                } else {
+                    urlsDiv.style.display = 'none';
+                    icon.textContent = '▶';
+                }
+            });
+        });
+    }
+    
     // 自动合规配置事件设置
     let autoComplianceInterval = null;
     let autoComplianceRunning = false;
@@ -2338,7 +2455,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function setupAutoComplianceEvents() {
         // 防止重复初始化
         if (autoComplianceEventsInitialized) return;
-        autoComplianceEventsInitialized = false;
+        autoComplianceEventsInitialized = true;
         
         const intervalSelect = document.getElementById('autoComplianceInterval');
         const nowBtn = document.getElementById('autoComplianceNowBtn');
@@ -2353,7 +2470,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         ComplianceService.setProgressCallback((percent, message) => {
-            updateAutoComplianceProgress(nowBtn, percent, message);
+            const mainBtn = document.getElementById('complianceBtn');
+            updateButtonProgress(mainBtn, percent);
         });
         
         // 从缓存加载配置
@@ -2427,8 +2545,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const mallid = mallidCookie.value;
             const sellerTemp = sellerTempCookie.value;
             
-            const cachedCookies = await chrome.storage.local.get('cachedCookies');
-            const shopName = cachedCookies.cachedCookies?.shopName || '未知店铺';
+            const storedData = await chrome.storage.local.get('cookieCache');
+            const shopName = storedData.cookieCache?.shopName || '未知店铺';
             
             const result = await ComplianceService.executeComplianceTask(mallid, sellerTemp, shopName);
             
@@ -2438,6 +2556,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             updateAutoComplianceProgress(nowBtn, 100, '完成');
             infoEl.textContent = `最后执行: ${new Date().toLocaleTimeString()}`;
+            // 更新主按钮的时间显示
+            const complianceBtnTime = document.getElementById('complianceBtnTime');
+            if (complianceBtnTime) complianceBtnTime.textContent = new Date().toLocaleTimeString();
             
             // 清除合规模板的new标签
             await clearComplianceTemplatesNewTag();
@@ -2527,21 +2648,11 @@ document.addEventListener('DOMContentLoaded', function() {
         infoEl.textContent = '';
     }
     
-    // 更新合规进度
+    // 更新合规进度（已迁移到主按钮，保留兼容）
     function updateAutoComplianceProgress(btnEl, percent, message) {
-        if (!btnEl) return;
-        
-        const progressBar = btnEl.querySelector('.auto-compliance-btn-progress');
-        const textEl = btnEl.querySelector('.auto-compliance-btn-text');
-        
-        if (progressBar) {
-            progressBar.style.width = `${percent}%`;
-        }
-        
-        if (textEl && message) {
-            textEl.textContent = message;
-        } else if (textEl && !message) {
-            textEl.textContent = '立即合规';
+        const mainBtn = document.getElementById('complianceBtn');
+        if (mainBtn) {
+            updateButtonProgress(mainBtn, percent);
         }
     }
     
@@ -2622,8 +2733,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
         `;
-        autoActivityEventsInitialized = false;
-        setupCampaignConfigCardEvents();
+        setupActivityConfigCardEvents();
         loadSavedActivityTemplates();
         setupAutoActivityEvents();
     }
@@ -3350,7 +3460,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         ActivityService.setProgressCallback((percent, message) => {
-            updateAutoActivityProgress(nowBtn, percent, message);
+            const mainBtn = document.getElementById('campaignBtn');
+            updateButtonProgress(mainBtn, percent);
         });
         
         // 从缓存加载配置
@@ -3424,8 +3535,8 @@ document.addEventListener('DOMContentLoaded', function() {
             const mallid = mallidCookie.value;
             const sellerTemp = sellerTempCookie.value;
             
-            const cachedCookies = await chrome.storage.local.get('cachedCookies');
-            const shopName = cachedCookies.cachedCookies?.shopName || '未知店铺';
+            const storedData = await chrome.storage.local.get('cookieCache');
+            const shopName = storedData.cookieCache?.shopName || '未知店铺';
             
             const result = await ActivityService.executeActivityTask(mallid, sellerTemp, shopName);
             
@@ -3435,6 +3546,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             updateAutoActivityProgress(nowBtn, 100, '完成');
             infoEl.textContent = `最后执行: ${new Date().toLocaleTimeString()}`;
+            // 更新主按钮的时间显示
+            const campaignBtnTime = document.getElementById('campaignBtnTime');
+            if (campaignBtnTime) campaignBtnTime.textContent = new Date().toLocaleTimeString();
             
             // 清除活动模板的new标签
             await clearActivityTemplatesNewTag();
@@ -3524,21 +3638,11 @@ document.addEventListener('DOMContentLoaded', function() {
         infoEl.textContent = '';
     }
     
-    // 更新活动进度
+    // 更新活动进度（已迁移到主按钮，保留兼容）
     function updateAutoActivityProgress(btnEl, percent, message) {
-        if (!btnEl) return;
-        
-        const progressBar = btnEl.querySelector('.auto-activity-btn-progress');
-        const textEl = btnEl.querySelector('.auto-activity-btn-text');
-        
-        if (progressBar) {
-            progressBar.style.width = `${percent}%`;
-        }
-        
-        if (textEl && message) {
-            textEl.textContent = message;
-        } else if (textEl && !message) {
-            textEl.textContent = '立即报名';
+        const mainBtn = document.getElementById('campaignBtn');
+        if (mainBtn) {
+            updateButtonProgress(mainBtn, percent);
         }
     }
     
@@ -3568,7 +3672,7 @@ document.addEventListener('DOMContentLoaded', function() {
         advertisingConfigCard.innerHTML = `
             <div class="ad-config-container">
                 <div class="ad-cookie-status" id="adCookieStatus">
-                    <span class="ad-cookie-status-text">auth_token: <span id="adCookieStatusValue">未获取</span></span>
+                    <span class="ad-cookie-status-text">广告COOKIE有效时间: <span id="adCookieStatusValue">未获取</span></span>
                 </div>
                 <div class="ad-config-section">
                     <div class="ad-config-row">
@@ -3599,7 +3703,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
         `;
-        autoAdEventsInitialized = false;
         setupAdConfigEvents();
     }
     
@@ -3627,7 +3730,8 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         AdService.setProgressCallback((percent, message) => {
-            updateAdProgress(nowBtn, percent, message);
+            const mainBtn = document.getElementById('advertisingBtn');
+            updateButtonProgress(mainBtn, percent);
         });
         
         // 限制ROAS输入框只能输入数字和小数点
@@ -3646,22 +3750,22 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // 检查并更新Cookie状态和倒计时
         async function updateAdCookieStatus() {
-            const stored = await chrome.storage.local.get(['adCookies', 'adCookiesTimestamp']);
+            const stored = await chrome.storage.local.get(['adCookies', 'adCookiesTimestamp', 'adCookiesExpires']);
             const adCookies = stored.adCookies || {};
             const timestamp = stored.adCookiesTimestamp || 0;
+            const expiresAt = stored.adCookiesExpires || (timestamp + 16 * 60 * 60 * 1000);
             const hasAuthToken = !!adCookies.auth_token;
             
             if (hasAuthToken && timestamp) {
-                // Cookie过期时间：24小时
-                const expiryTime = timestamp + (24 * 60 * 60 * 1000);
-                const remaining = expiryTime - Date.now();
+                // 使用Cookie的实际过期时间
+                const remaining = expiresAt - Date.now();
                 
                 if (remaining > 0) {
                     const hours = Math.floor(remaining / (60 * 60 * 1000));
                     const minutes = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
                     const seconds = Math.floor((remaining % (60 * 1000)) / 1000);
                     
-                    adCookieStatusValue.textContent = `${hours}小时${minutes}分${seconds}秒`;
+                    adCookieStatusValue.textContent = `${hours}:${minutes}:${seconds}`;
                     adCookieStatusValue.style.color = '#4CAF50';
                     roasInput.disabled = false;
                     intervalSelect.disabled = false;
@@ -3784,9 +3888,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const roasInput = document.getElementById('adRoasInput');
             const roas = roasInput.value.trim();
             
-            const cachedCookies = await chrome.storage.local.get(['cachedCookies', 'adCookies']);
-            const shopName = cachedCookies.cachedCookies?.shopName || '未知店铺';
-            const adCookies = cachedCookies.adCookies || {};
+            const storedData = await chrome.storage.local.get(['cookieCache', 'adCookies']);
+            const shopName = storedData.cookieCache?.shopName || '未知店铺';
+            const adCookies = storedData.adCookies || {};
             
             const result = await AdService.executeAdTask(adCookies, roas, shopName);
             
@@ -3796,6 +3900,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             updateAdProgress(nowBtn, 100, '完成');
             infoEl.textContent = `最后执行: ${new Date().toLocaleTimeString()}`;
+            // 更新主按钮的时间显示
+            const advertisingBtnTime = document.getElementById('advertisingBtnTime');
+            if (advertisingBtnTime) advertisingBtnTime.textContent = new Date().toLocaleTimeString();
         } catch (e) {
             addLog(`[广告] 执行失败: ${e.message}`);
             updateAdProgress(nowBtn, 0, '失败');
@@ -3859,21 +3966,11 @@ document.addEventListener('DOMContentLoaded', function() {
         addLog('[广告] 定时任务已停止');
     }
     
-    // 更新广告进度
+    // 更新广告进度（已迁移到主按钮，保留兼容）
     function updateAdProgress(button, percent, message) {
-        if (!button) return;
-        
-        const progressEl = button.querySelector('.ad-config-btn-progress');
-        const textEl = button.querySelector('.ad-config-btn-text');
-        
-        if (progressEl) {
-            progressEl.style.width = percent + '%';
-        }
-        
-        if (textEl && message) {
-            textEl.textContent = message;
-        } else if (textEl && !message) {
-            textEl.textContent = '立即开通';
+        const mainBtn = document.getElementById('advertisingBtn');
+        if (mainBtn) {
+            updateButtonProgress(mainBtn, percent);
         }
     }
     

@@ -23,7 +23,7 @@ const ComplianceService = {
     
     updateProgress(current, total, message = '') {
         if (this.progressCallback) {
-            const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+            const percent = total > 0 ? parseFloat(((current / total) * 100).toFixed(2)) : 0;
             this.progressCallback(percent, message);
         }
     },
@@ -58,8 +58,10 @@ const ComplianceService = {
             if (data.success) {
                 return { success: true, data: data.result?.data || [] };
             }
+            this.addLog(`[合规] 失败响应: ${JSON.stringify(data)}`);
             return { success: false, message: data.error_msg || '查询失败' };
         } catch (e) {
+            this.addLog(`[合规] 失败异常: ${e.message}`);
             return { success: false, message: e.message };
         }
     },
@@ -80,8 +82,10 @@ const ComplianceService = {
             if (data.success) {
                 return { success: true, data: data.result || {} };
             }
+            this.addLog(`[合规] 失败响应: ${JSON.stringify(data)}`);
             return { success: false, message: data.error_msg || '查询详情失败' };
         } catch (e) {
+            this.addLog(`[合规] 失败异常: ${e.message}`);
             return { success: false, message: e.message };
         }
     },
@@ -97,6 +101,9 @@ const ComplianceService = {
         }
         
         const item = queryResult.data[0];
+        const catId = item.cat_id;
+        const catName = item.cat_name || '';  // 从API响应中获取类目名
+        
         const waitTaskList = (item.wait_task_dtolist || []).map(t => ({
             task_type: t.task_type,
             task_status: t.status,
@@ -105,7 +112,8 @@ const ComplianceService = {
         
         // 2. 查询详情
         const detailQuery = {
-            cat_id: item.cat_id,
+            cat_id: catId,
+            cat_name: catName,
             spu_id: item.spu_id,
             goods_id: item.goods_id,
             wait_task_list: waitTaskList
@@ -138,7 +146,8 @@ const ComplianceService = {
             success: true,
             data: {
                 mall_id: mallid,
-                cat_id: item.cat_id,
+                cat_id: catId,
+                cat_name: catName,
                 input_spu: [spuId],
                 template_list: enrichedTemplates,
                 real_picture_info_list: realPictureList
@@ -238,8 +247,10 @@ const ComplianceService = {
             if (data.success) {
                 return { success: true, data: data.result?.data || [], total: data.result?.total || 0 };
             }
+            this.addLog(`[合规] 失败响应: ${JSON.stringify(data)}`);
             return { success: false, message: data.error_msg || '查询失败' };
         } catch (e) {
+            this.addLog(`[合规] 失败异常: ${e.message}`);
             return { success: false, message: e.message };
         }
     },
@@ -270,8 +281,10 @@ const ComplianceService = {
                     totalFail: result.total_fail || 0
                 };
             }
+            this.addLog(`[合规] 失败响应: ${JSON.stringify(data)}`);
             return { success: false, message: data.error_msg || '提交失败' };
         } catch (e) {
+            this.addLog(`[合规] 失败异常: ${e.message}`);
             return { success: false, message: e.message };
         }
     },
@@ -321,8 +334,10 @@ const ComplianceService = {
             if (data.success) {
                 return { success: true, total: data.result?.total || 0 };
             }
+            this.addLog(`[合规] 失败响应: ${JSON.stringify(data)}`);
             return { success: false, message: data.error_msg || '上传失败' };
         } catch (e) {
+            this.addLog(`[合规] 失败异常: ${e.message}`);
             return { success: false, message: e.message };
         }
     },
@@ -369,7 +384,7 @@ const ComplianceService = {
                 if (!pendingResult.success || pendingResult.data.length === 0) {
                     this.addLog(`[合规] 类目 ${catId} 无待处理SPU`);
                     processedTemplates++;
-                    this.updateProgress(Math.round((processedTemplates / templates.length) * 100), 100, `处理中 ${processedTemplates}/${templates.length}`);
+                    this.updateProgress(processedTemplates, templates.length, `处理中 ${processedTemplates}/${templates.length}`);
                     continue;
                 }
                 
@@ -436,7 +451,7 @@ const ComplianceService = {
                 }
                 
                 processedTemplates++;
-                this.updateProgress(Math.round((processedTemplates / templates.length) * 100), 100, `处理中 ${processedTemplates}/${templates.length}`);
+                this.updateProgress(processedTemplates, templates.length, `处理中 ${processedTemplates}/${templates.length}`);
             }
             
             this.addLog(`[合规] 合规任务完成，成功: ${totalSuccess}, 失败: ${totalFail}`);

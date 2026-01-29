@@ -1248,6 +1248,45 @@ input:checked + .slider:before {
     color: #999;
 }
 
+.compliance-real-photo-wrapper {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.compliance-real-photo-toggle {
+    user-select: none;
+}
+
+.compliance-real-photo-urls {
+    background: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 6px 8px;
+    margin-top: 4px;
+    font-size: 11px;
+}
+
+.real-photo-url-item {
+    margin: 3px 0;
+    word-break: break-all;
+}
+
+.real-photo-link {
+    color: #1976d2;
+    text-decoration: none;
+}
+
+.real-photo-link:hover {
+    text-decoration: underline;
+    color: #1565c0;
+}
+
+.real-photo-expand-icon {
+    font-size: 10px;
+    margin-left: 2px;
+}
+
 .compliance-actions {
     display: flex;
     justify-content: flex-end;

@@ -28,7 +28,7 @@ const PricingService = {
     
     updateProgress(current, total, message = '') {
         if (this.progressCallback) {
-            const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+            const percent = total > 0 ? parseFloat(((current / total) * 100).toFixed(2)) : 0;
             this.progressCallback(percent, message);
         }
     },
@@ -134,9 +134,9 @@ const PricingService = {
         return null;
     },
     
-    // 计算调整后的价格（简化算法：supplyPrice - priceStrategy * currentTimes）
-    calculateAdjustedPrice(supplyPrice, priceStrategy, currentTimes) {
-        const adjusted = supplyPrice - priceStrategy * currentTimes;
+    // 计算调整后的价格（简化算法：supplyPrice - priceStrategy）
+    calculateAdjustedPrice(supplyPrice, priceStrategy) {
+        const adjusted = supplyPrice - priceStrategy;
         return Math.max(adjusted, 0);
     },
     
@@ -169,7 +169,7 @@ const PricingService = {
                 result.reason = '官方报价 >= 可接受价格';
                 result.price = suggestPrice;
             } else {
-                const adjustedPrice = this.calculateAdjustedPrice(supplyPrice, priceStrategy, currentTimes);
+                const adjustedPrice = this.calculateAdjustedPrice(supplyPrice, priceStrategy);
                 
                 if (adjustedPrice < minPrice) {
                     result.action = 'refuse';
@@ -260,10 +260,12 @@ const PricingService = {
                 return { success: true, message: '批量提交成功', successCount: successCount, failCount: 0 };
             } else {
                 const failCount = items.length + rejectIds.length;
+                this.addLog(`[核价] 失败响应: ${JSON.stringify(data)}`);
                 return { success: false, message: data.errorMsg || '未知错误', successCount: 0, failCount: failCount };
             }
         } catch (e) {
             const failCount = items.length + rejectIds.length;
+            this.addLog(`[核价] 失败异常: ${e.message}`);
             return { success: false, message: e.message, successCount: 0, failCount: failCount };
         }
     },
@@ -300,13 +302,17 @@ const PricingService = {
                         const dataList = result.result?.dataList || [];
                         const total = result.result?.total || 0;
                         
+                        this.addLog(`[核价] 第${pageNum}页: 获取到 ${dataList.length} 条数据`);
+                        
                         if (dataList.length === 0) {
                             return { total: total, matched: 0, unmatched: 0 };
                         }
                         
                         const skuDataList = this.extractSkuData(dataList);
+                        this.addLog(`[核价] 第${pageNum}页: 提取到 ${skuDataList.length} 个SKU`);
                         const actions = [];
                         
+                        let unmatchedCount = 0;
                         for (const skuData of skuDataList) {
                             const rule = this.matchTemplateRule(skuData, templates);
                             if (rule) {
@@ -338,11 +344,19 @@ const PricingService = {
                                 );
                                 
                                 this.pricingLogs.push(logContent);
+                            } else {
+                                unmatchedCount++;
+                                if (unmatchedCount <= 3) {
+                                    this.addLog(`[核价] 未匹配模板: SPU=${skuData.spu}, catId=${skuData.catId}, sizeSpec=${skuData.sizeSpec}`);
+                                }
                             }
                         }
                         
+                        this.addLog(`[核价] 第${pageNum}页: 匹配模板 ${actions.length} 个, 未匹配 ${skuDataList.length - actions.length} 个`);
+                        
                         if (actions.length > 0) {
-                            await this.submitPriceReviewBatch(actions, mallid, sellerTemp);
+                            const submitResult = await this.submitPriceReviewBatch(actions, mallid, sellerTemp);
+                            this.addLog(`[核价] 第${pageNum}页: 提交结果 - 成功${submitResult.successCount} 失败${submitResult.failCount}`);
                         }
                         
                         return {
@@ -399,13 +413,13 @@ const PricingService = {
             this.addLog(`[核价] 共 ${total} 个待核价商品，分 ${totalPages} 页处理`);
             
             let processedPages = 1;
-            this.updateProgress(Math.round((processedPages / totalPages) * 100), 100, `处理中 ${processedPages}/${totalPages} 页`);
+            this.updateProgress(processedPages, totalPages, `处理中 ${processedPages}/${totalPages} 页`);
             
             if (totalPages > 1) {
                 for (let page = 2; page <= totalPages; page++) {
                     await this.processPageAndSubmit(page, this.PAGE_SIZE, catIdsFilter, templates, mallid, sellerTemp, shopName);
                     processedPages++;
-                    this.updateProgress(Math.round((processedPages / totalPages) * 100), 100, `处理中 ${processedPages}/${totalPages} 页`);
+                    this.updateProgress(processedPages, totalPages, `处理中 ${processedPages}/${totalPages} 页`);
                 }
             }
             

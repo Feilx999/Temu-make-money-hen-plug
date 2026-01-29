@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "TEMU印钞鸡",
-  "version": "1.3",
+  "name": "TEMU自动挂机",
+  "version": "1.0",
   "description": "TEMU自动托管工具，自动开JIT、自动补货、自动合规、自动核价、自动报活动、自动确认、自动开广告",
   "permissions": [
     "cookies",
@@ -16,7 +16,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["replenishWorker.js"],
+      "resources": ["adWorker.js"],
       "matches": ["<all_urls>"]
     }
   ],
@@ -37,5 +37,13 @@
     "16": "icon.png",
     "48": "icon.png",
     "128": "icon.png"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://agentseller.temu.com/*"],
+      "js": ["popupInterceptor.js"],
+      "run_at": "document_start",
+      "all_frames": true
+    }
+  ]
 }

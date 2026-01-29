@@ -1,9 +1,13 @@
 const AdService = {
     AD_BASE_URL: "https://ads.temu.com/api/v1/coconut/ad",
+    WORKER_COUNT: 10,
     
     logCallback: null,
     progressCallback: null,
     adLogs: [],
+    workers: [],
+    workerResolvers: {},
+    taskIdCounter: 0,
     
     setLogCallback(callback) {
         this.logCallback = callback;
@@ -21,7 +25,7 @@ const AdService = {
     
     updateProgress(current, total, message = '') {
         if (this.progressCallback) {
-            const percent = total > 0 ? (current / total) * 100 : 0;
+            const percent = total > 0 ? parseFloat(((current / total) * 100).toFixed(2)) : 0;
             this.progressCallback(percent, message);
         }
     },
@@ -42,6 +46,69 @@ const AdService = {
         });
     },
     
+    // 初始化Workers
+    initWorkers() {
+        if (this.workers.length > 0) return;
+        
+        for (let i = 0; i < this.WORKER_COUNT; i++) {
+            const worker = new Worker(chrome.runtime.getURL('adWorker.js'));
+            worker.onmessage = (e) => {
+                const { taskId, results } = e.data;
+                if (this.workerResolvers[taskId]) {
+                    this.workerResolvers[taskId](results);
+                    delete this.workerResolvers[taskId];
+                }
+            };
+            this.workers.push(worker);
+        }
+    },
+    
+    // 使用Worker执行批量请求
+    async executeWithWorker(workerIndex, pages, pageSize, listId, headers) {
+        return new Promise((resolve) => {
+            const taskId = ++this.taskIdCounter;
+            this.workerResolvers[taskId] = resolve;
+            this.workers[workerIndex].postMessage({
+                taskId,
+                pages,
+                pageSize,
+                listId,
+                headers
+            });
+        });
+    },
+    
+    // 使用多个Worker并发获取商品数据
+    async fetchGoodsWithWorkers(totalPages, pageSize, listId, headers) {
+        this.initWorkers();
+        
+        const workerCount = this.workers.length;
+        const allPages = Array.from({ length: totalPages }, (_, i) => i + 1);
+        const chunkSize = Math.ceil(allPages.length / workerCount);
+        const chunks = [];
+        
+        for (let i = 0; i < allPages.length; i += chunkSize) {
+            chunks.push(allPages.slice(i, i + chunkSize));
+        }
+        
+        const promises = chunks.map((chunk, index) => 
+            this.executeWithWorker(index % workerCount, chunk, pageSize, listId, headers)
+        );
+        
+        const allResults = await Promise.all(promises);
+        const flatResults = allResults.flat();
+        
+        // 汇总所有商品ID
+        let allGoods = [];
+        for (const result of flatResults) {
+            if (result.success && result.goods) {
+                allGoods = allGoods.concat(result.goods);
+            }
+        }
+        
+        return allGoods;
+    },
+    
     async requestWithRetry(url, headers, body, maxRetries = 3) {
         let lastError = null;
         
@@ -59,8 +126,11 @@ const AdService = {
                     return data;
                 }
                 lastError = data.error_msg || data.errorMsg || '请求失败';
+                // 输出完整失败响应
+                this.addLog(`[广告] 失败响应: ${JSON.stringify(data)}`);
             } catch (e) {
                 lastError = e.message;
+                this.addLog(`[广告] 失败异常: ${e.message}`);
                 await new Promise(r => setTimeout(r, 500));
             }
         }
@@ -172,51 +242,37 @@ const AdService = {
             this.addLog(`[广告] 当前店铺有 ${total} 个商品`);
             
             const pageCount = Math.floor(total / 100 * 1.2);
-            this.addLog(`[广告] 开始获取 ${pageCount} 页商品数据...`);
+            this.addLog(`[广告] 开始使用10个Worker并发获取 ${pageCount} 页商品数据...`);
             
-            let goodsIdList = [];
             const adCreationPromises = [];
             const failCountMap = {};
             let successCount = 0;
-            let processedPages = 0;
-            
             const batchSize = 50;
-            const concurrentPages = 20;
             
-            for (let startPage = 1; startPage <= pageCount; startPage += concurrentPages) {
-                const endPage = Math.min(startPage + concurrentPages - 1, pageCount);
-                const pagePromises = [];
+            // 使用10个Worker并发获取所有商品数据
+            this.updateProgress(10, 100, '获取商品数据中...');
+            let goodsIdList = await this.fetchGoodsWithWorkers(pageCount, 100, listId, headers);
+            this.addLog(`[广告] 获取到 ${goodsIdList.length} 个待开通广告的商品`);
+            this.updateProgress(30, 100, '开始创建广告...');
+            
+            // 批量创建广告
+            const totalBatches = Math.ceil(goodsIdList.length / batchSize);
+            let processedBatches = 0;
+            
+            while (goodsIdList.length >= batchSize) {
+                const batchGoods = goodsIdList.slice(0, batchSize);
+                goodsIdList = goodsIdList.slice(batchSize);
                 
-                for (let page = startPage; page <= endPage; page++) {
-                    pagePromises.push(
-                        this.fetchGoodsPage(queryUrl, headers, page, 100, listId)
-                    );
-                }
-                
-                const pageResults = await Promise.all(pagePromises);
-                
-                for (const pageGoods of pageResults) {
-                    if (pageGoods && pageGoods.length > 0) {
-                        goodsIdList = goodsIdList.concat(pageGoods);
-                    }
-                    
-                    while (goodsIdList.length >= batchSize) {
-                        const batchGoods = goodsIdList.slice(0, batchSize);
-                        goodsIdList = goodsIdList.slice(batchSize);
-                        
-                        const createPromise = this.createAdsBatch(createUrl, headers, batchGoods, roasValue)
-                            .then(result => {
-                                successCount += result.batchSuccessCount;
-                                for (const [reason, count] of Object.entries(result.batchFailMap)) {
-                                    failCountMap[reason] = (failCountMap[reason] || 0) + count;
-                                }
-                            });
-                        adCreationPromises.push(createPromise);
-                    }
-                    
-                    processedPages++;
-                    this.updateProgress(processedPages, pageCount, `已处理 ${processedPages}/${pageCount} 页`);
-                }
+                const createPromise = this.createAdsBatch(createUrl, headers, batchGoods, roasValue)
+                    .then(result => {
+                        successCount += result.batchSuccessCount;
+                        for (const [reason, count] of Object.entries(result.batchFailMap)) {
+                            failCountMap[reason] = (failCountMap[reason] || 0) + count;
+                        }
+                        processedBatches++;
+                        this.updateProgress(30 + (processedBatches / totalBatches) * 60, 100, `创建广告 ${processedBatches}/${totalBatches}`);
+                    });
+                adCreationPromises.push(createPromise);
             }
             
             if (goodsIdList.length > 0) {

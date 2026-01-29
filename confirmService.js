@@ -7,20 +7,30 @@ const ConfirmService = {
     
     // 日志回调函数
     logCallback: null,
+    progressCallback: null,
     
     // 设置日志回调
     setLogCallback(callback) {
         this.logCallback = callback;
     },
     
+    setProgressCallback(callback) {
+        this.progressCallback = callback;
+    },
+    
     // 输出日志
     log(message) {
-        const timestamp = new Date().toLocaleTimeString();
-        const logMessage = `[${timestamp}] [确认] ${message}`;
         if (this.logCallback) {
-            this.logCallback(logMessage);
+            this.logCallback(`[确认] ${message}`);
         }
-        console.log(logMessage);
+        console.log(`[确认] ${message}`);
+    },
+    
+    updateProgress(current, total, message = '') {
+        if (this.progressCallback) {
+            const percent = total > 0 ? parseFloat(((current / total) * 100).toFixed(2)) : 0;
+            this.progressCallback(percent, message);
+        }
     },
     
     // 获取请求头
@@ -74,11 +84,13 @@ const ConfirmService = {
     // 执行确认商品
     async executeConfirm(mallid, sellerTemp, maxConfirmCount = null) {
         this.log('开始执行确认商品任务...');
+        this.updateProgress(0, 100, '准备中...');
         
         // 获取总数
         const firstPageResult = await this.getFirstPage(mallid, sellerTemp);
         if (!firstPageResult.success) {
             this.log(`错误: ${firstPageResult.error}`);
+            this.updateProgress(0, 100, '失败');
             return firstPageResult;
         }
         
@@ -86,6 +98,7 @@ const ConfirmService = {
         
         if (total === 0) {
             this.log('没有需要确认的商品');
+            this.updateProgress(100, 100, '完成');
             return { success: true, successCount: 0, total: 0, failReasons: {} };
         }
         
@@ -108,17 +121,17 @@ const ConfirmService = {
                 break;
             }
             
-            this.log(`正在处理第 ${page}/${maxPage} 页...`);
+            this.updateProgress(processedCount, total, `处理中 ${processedCount}/${total}`);
             
-            // 获取商品列表
+            let errorPage = 0;
+            let confirmTaskList = [];
+            
+            // 获取商品列表 - 始终请求第1页，因为确认后的商品会从待确认列表中移除
             const payload = {
                 pageSize: this.PAGE_SIZE,
-                pageNum: page,
+                pageNum: 1,
                 supplierTodoTypeList: [6]
             };
-            
-            let querySuccess = false;
-            let dataList = [];
             
             for (let retry = 0; retry < this.MAX_RETRY; retry++) {
                 try {
@@ -137,46 +150,46 @@ const ConfirmService = {
                     if (response.ok) {
                         const result = await response.json();
                         if (result.success) {
-                            dataList = result.result?.dataList || [];
-                            querySuccess = true;
+                            const dataList = result.result?.dataList || [];
+                            for (const item of dataList) {
+                                const goodsId = item.goodsId;
+                                if (goodsId) {
+                                    confirmTaskList.push({ goodsId: goodsId });
+                                }
+                            }
                             break;
                         }
                     }
+                    
+                    if (retry === this.MAX_RETRY - 1) {
+                        errorPage = 1;
+                        const reason = `请求第${page}页数据失败`;
+                        failReasons[reason] = (failReasons[reason] || 0) + 1;
+                    }
                 } catch (error) {
                     if (retry === this.MAX_RETRY - 1) {
+                        errorPage = 1;
                         const reason = `请求第${page}页数据失败`;
                         failReasons[reason] = (failReasons[reason] || 0) + 1;
                     }
                 }
             }
             
-            if (!querySuccess) continue;
-            
-            // 构建确认任务列表
-            let confirmTaskList = [];
-            for (const item of dataList) {
-                const goodsId = item.goodsId;
-                if (goodsId) {
-                    confirmTaskList.push({ goodsId: goodsId });
-                }
-            }
+            if (errorPage) continue;
+            if (confirmTaskList.length === 0) continue;
             
             // 检查是否需要切片处理
             if (maxConfirmCount && maxConfirmCount > 0) {
                 const remaining = maxConfirmCount - processedCount;
                 if (remaining <= 0) {
-                    // 剩余数为0，跳过当前和后续所有页
                     this.log(`已达到最大确认数 ${maxConfirmCount}，停止处理`);
                     break;
                 }
                 if (confirmTaskList.length > remaining) {
-                    // 需要切片，只取剩余数量
                     this.log(`当前页${confirmTaskList.length}条，剩余可确认${remaining}条，进行切片`);
                     confirmTaskList = confirmTaskList.slice(0, remaining);
                 }
             }
-            
-            if (confirmTaskList.length === 0) continue;
             
             // 提交确认
             const submitPayload = { supplierConfirmReqList: confirmTaskList };
@@ -197,6 +210,9 @@ const ConfirmService = {
                     
                     if (response.ok) {
                         const result = await response.json();
+                        /* DEBUG_START: 调试代码 - 输出batchSupplierConfirm接口原始响应 */
+                        this.log(`[调试] batchSupplierConfirm原始响应: ${JSON.stringify(result)}`);
+                        /* DEBUG_END */
                         if (result.success) {
                             const failList = result.result?.failedDetails || [];
                             if (failList.length > 0) {
@@ -205,33 +221,53 @@ const ConfirmService = {
                                     const reason = failItem.errorMsg || '接口返回未知错误';
                                     failReasons[reason] = (failReasons[reason] || 0) + 1;
                                 }
+                                // 输出失败响应调试信息
+                                this.log(`失败响应: ${JSON.stringify(result)}`);
                             } else {
                                 successCount += confirmTaskList.length;
                             }
                             processedCount += confirmTaskList.length;
                             break;
                         } else {
-                            if (retry === this.MAX_RETRY - 1) {
-                                const reason = `提交确认失败`;
-                                failReasons[reason] = (failReasons[reason] || 0) + confirmTaskList.length;
-                            }
+                            // 接口返回 success=false
+                            this.log(`失败响应: ${JSON.stringify(result)}`);
                         }
+                    } else {
+                        // HTTP状态码不是200
+                        try {
+                            const jsonResponse = await response.json();
+                            this.log(`失败响应: ${JSON.stringify(jsonResponse)}`);
+                        } catch {
+                            const textResponse = await response.text();
+                            this.log(`失败响应(HTTP ${response.status}): ${textResponse}`);
+                        }
+                    }
+                    
+                    if (retry === this.MAX_RETRY - 1) {
+                        errorPage = 1;
+                        const reason = `提交确认失败`;
+                        failReasons[reason] = (failReasons[reason] || 0) + confirmTaskList.length;
                     }
                 } catch (error) {
                     if (retry === this.MAX_RETRY - 1) {
+                        errorPage = 1;
                         const reason = `提交确认请求失败`;
                         failReasons[reason] = (failReasons[reason] || 0) + confirmTaskList.length;
+                        this.log(`失败异常: ${error.message}`);
                     }
                 }
             }
         }
         
+        this.updateProgress(100, 100, '完成');
+        
         // 输出结果
+        this.log(`成功确认 ${successCount}/${total} 个商品`);
         if (Object.keys(failReasons).length > 0) {
-            this.log(`成功确认 ${successCount}/${total} 个商品`);
-            this.log(`失败原因: ${JSON.stringify(failReasons)}`);
-        } else {
-            this.log(`成功确认 ${successCount}/${total} 个商品`);
+            const reasonStrings = Object.entries(failReasons)
+                .map(([reason, count]) => `${reason}: ${count}`)
+                .join(', ');
+            this.log(`失败原因: ${reasonStrings}`);
         }
         
         return {
