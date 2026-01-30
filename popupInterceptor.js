@@ -23,7 +23,7 @@
 
         // 不允许则拦截
         if(!a){
-          console.log(`拦截${t} [${++c}]，class:"${n}"`);
+          console.log(`拦截弹窗${t} [${++c}]，class:"${n}"`);
           const d=document.createElement('div');
           d.style.cssText='display:none!important;height:0!important;width:0!important;';
           return o.call(this,d);

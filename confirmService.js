@@ -211,7 +211,7 @@ const ConfirmService = {
                     if (response.ok) {
                         const result = await response.json();
                         /* DEBUG_START: 调试代码 - 输出batchSupplierConfirm接口原始响应 */
-                        this.log(`[调试] batchSupplierConfirm原始响应: ${JSON.stringify(result)}`);
+                        // this.log(`[调试] batchSupplierConfirm原始响应: ${JSON.stringify(result)}`);
                         /* DEBUG_END */
                         if (result.success) {
                             const failList = result.result?.failedDetails || [];
@@ -221,25 +221,29 @@ const ConfirmService = {
                                     const reason = failItem.errorMsg || '接口返回未知错误';
                                     failReasons[reason] = (failReasons[reason] || 0) + 1;
                                 }
-                                // 输出失败响应调试信息
-                                this.log(`失败响应: ${JSON.stringify(result)}`);
+                                // 有部分失败时输出详细响应
+                                this.log(`部分失败响应: ${JSON.stringify(result)}`);
                             } else {
                                 successCount += confirmTaskList.length;
                             }
                             processedCount += confirmTaskList.length;
                             break;
                         } else {
-                            // 接口返回 success=false
-                            this.log(`失败响应: ${JSON.stringify(result)}`);
+                            // 仅在最后一次重试失败时输出
+                            if (retry === this.MAX_RETRY - 1) {
+                                this.log(`确认失败响应: ${JSON.stringify(result)}`);
+                            }
                         }
                     } else {
-                        // HTTP状态码不是200
-                        try {
-                            const jsonResponse = await response.json();
-                            this.log(`失败响应: ${JSON.stringify(jsonResponse)}`);
-                        } catch {
-                            const textResponse = await response.text();
-                            this.log(`失败响应(HTTP ${response.status}): ${textResponse}`);
+                        // 仅在最后一次重试失败时输出
+                        if (retry === this.MAX_RETRY - 1) {
+                            try {
+                                const jsonResponse = await response.json();
+                                this.log(`确认失败响应: ${JSON.stringify(jsonResponse)}`);
+                            } catch {
+                                const textResponse = await response.text();
+                                this.log(`确认失败响应(HTTP ${response.status}): ${textResponse}`);
+                            }
                         }
                     }
                     

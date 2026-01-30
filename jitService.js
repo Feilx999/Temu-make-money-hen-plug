@@ -47,7 +47,7 @@ const JitService = {
     async getFirstPage(mallid, sellerTemp, filterType = 'all') {
         const data = {
             isJitForMms: false,       // 筛选未开jit的商品
-            skcSiteStatus: 1,         // 筛选在售商品
+            // skcSiteStatus: 1,         // 筛选在售商品
             page: 1,
             pageSize: 1
         };
@@ -153,15 +153,21 @@ const JitService = {
                             querySuccess = true;
                             break;
                         } else {
-                            this.log(`失败响应: ${JSON.stringify(result)}`);
+                            // 仅在最后一次重试失败时输出
+                            if (retry === this.MAX_RETRY - 1) {
+                                this.log(`查询失败响应: ${JSON.stringify(result)}`);
+                            }
                         }
                     } else {
-                        try {
-                            const jsonResponse = await response.json();
-                            this.log(`失败响应: ${JSON.stringify(jsonResponse)}`);
-                        } catch {
-                            const textResponse = await response.text();
-                            this.log(`失败响应(HTTP ${response.status}): ${textResponse}`);
+                        // 仅在最后一次重试失败时输出
+                        if (retry === this.MAX_RETRY - 1) {
+                            try {
+                                const jsonResponse = await response.json();
+                                this.log(`查询失败响应: ${JSON.stringify(jsonResponse)}`);
+                            } catch {
+                                const textResponse = await response.text();
+                                this.log(`查询失败响应(HTTP ${response.status}): ${textResponse}`);
+                            }
                         }
                     }
                 } catch (error) {
@@ -179,15 +185,16 @@ const JitService = {
             const jitTaskList = [];
             for (const item of dataList) {
                 const productSkcId = item.productSkcId;
+                const productId = item.productId;
                 if (productSkcId) {
-                    jitTaskList.push({ productSkcId: productSkcId });
+                    jitTaskList.push({ "productSkcId": productSkcId, "productId": productId });
                 }
             }
             
             if (jitTaskList.length === 0) continue;
             
             // 批量开JIT
-            const openJitPayload = { list: jitTaskList };
+            const openJitPayload = { productSkcSubSellModeReqList: jitTaskList };
             
             for (let retry = 0; retry < this.MAX_RETRY; retry++) {
                 try {
@@ -213,25 +220,30 @@ const JitService = {
                                     const reason = failItem.errorMsg || '开JIT失败';
                                     failReasons[reason] = (failReasons[reason] || 0) + 1;
                                 }
-                                this.log(`失败响应: ${JSON.stringify(result)}`);
+                                // 有部分失败时输出详细响应
+                                this.log(`部分失败响应: ${JSON.stringify(result)}`);
                             } else {
                                 successCount += jitTaskList.length;
                             }
                             break;
                         } else {
+                            // 仅在最后一次重试失败时输出并记录失败原因
                             if (retry === this.MAX_RETRY - 1) {
                                 const errorMsg = result.errorMsg || '开JIT失败';
                                 failReasons[errorMsg] = (failReasons[errorMsg] || 0) + jitTaskList.length;
+                                this.log(`开JIT失败响应: ${JSON.stringify(result)}`);
                             }
-                            this.log(`失败响应: ${JSON.stringify(result)}`);
                         }
                     } else {
-                        try {
-                            const jsonResponse = await response.json();
-                            this.log(`失败响应: ${JSON.stringify(jsonResponse)}`);
-                        } catch {
-                            const textResponse = await response.text();
-                            this.log(`失败响应(HTTP ${response.status}): ${textResponse}`);
+                        // 仅在最后一次重试失败时输出
+                        if (retry === this.MAX_RETRY - 1) {
+                            try {
+                                const jsonResponse = await response.json();
+                                this.log(`开JIT失败响应: ${JSON.stringify(jsonResponse)}`);
+                            } catch {
+                                const textResponse = await response.text();
+                                this.log(`开JIT失败响应(HTTP ${response.status}): ${textResponse}`);
+                            }
                         }
                     }
                 } catch (error) {

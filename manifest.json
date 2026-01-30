@@ -16,7 +16,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["adWorker.js"],
+      "resources": ["adWorker.js", "识别码上传模板.xlsx"],
       "matches": ["<all_urls>"]
     }
   ],

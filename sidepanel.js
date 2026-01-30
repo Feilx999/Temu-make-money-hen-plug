@@ -2305,14 +2305,13 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="compliance-template-header-left">
                             <span class="compliance-template-expand-icon">▶</span>
                             <span class="compliance-template-cat">${template.cat_name ? `类目: ${template.cat_name}` : `类目ID: ${template.cat_id}`}</span>
-                            ${template.isNew ? '<span class="compliance-template-new-tag">new</span>' : ''}
-                            <span class="compliance-template-product-ids">来源: ${template.input_spu.join(', ')}</span>
                         </div>
                         <div class="compliance-template-actions">
                             <button class="compliance-template-delete-btn" data-index="${i}">删除</button>
                         </div>
                     </div>
                     <div class="compliance-template-content" style="display: none;">
+                        <div class="compliance-template-source">来源SPU: ${template.input_spu.join(', ')}</div>
                         <div class="compliance-tasks-grid">`;
             
             for (const task of enabledTasks) {
@@ -2549,10 +2548,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const shopName = storedData.cookieCache?.shopName || '未知店铺';
             
             const result = await ComplianceService.executeComplianceTask(mallid, sellerTemp, shopName);
-            
-            if (result.success && result.logs && result.logs.length > 0) {
-                downloadComplianceLog(shopName, result.logs);
-            }
             
             updateAutoComplianceProgress(nowBtn, 100, '完成');
             infoEl.textContent = `最后执行: ${new Date().toLocaleTimeString()}`;
