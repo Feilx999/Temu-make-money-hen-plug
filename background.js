@@ -63,10 +63,8 @@ async function addLog(message) {
     recentLogsCache.push(logMessage);
     if (recentLogsCache.length > 100) recentLogsCache.shift();
     
-    // 发送日志到sidepanel
-    try {
-        chrome.runtime.sendMessage({ action: 'logUpdate', log: logMessage });
-    } catch (e) { /* sidepanel可能未打开 */ }
+    // 发送日志到sidepanel（添加catch处理Promise rejection）
+    chrome.runtime.sendMessage({ action: 'logUpdate', log: logMessage }).catch(() => {});
     
     try {
         const database = await openDatabase();
@@ -410,11 +408,9 @@ async function saveScheduledConfig(config) { await chrome.storage.local.set({ sc
 async function getScheduledConfig() { return (await chrome.storage.local.get(['scheduledConfig'])).scheduledConfig || null; }
 async function clearScheduledConfig() { await chrome.storage.local.remove(['scheduledConfig']); await chrome.alarms.clearAll(); }
 
-// 发送进度更新到sidepanel
+// 发送进度更新到sidepanel（添加catch处理Promise rejection）
 function sendProgressUpdate(progress) {
-    try {
-        chrome.runtime.sendMessage({ action: 'progressUpdate', progress });
-    } catch (e) { /* sidepanel可能未打开 */ }
+    chrome.runtime.sendMessage({ action: 'progressUpdate', progress }).catch(() => {});
 }
 
 async function runScheduledTasks() {
@@ -595,3 +591,84 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // 每天清理一次旧日志
 chrome.alarms.create('cleanOldLogs', { periodInMinutes: 1440 });
+
+// ==================== 弹窗拦截器注入 ====================
+// 拦截器代码（在页面主世界执行）
+function popupInterceptorCode() {
+    if (window.__TEMU_POPUP_INTERCEPTOR__) return;
+    window.__TEMU_POPUP_INTERCEPTOR__ = true;
+    
+    const originalAppendChild = Element.prototype.appendChild;
+    // const allowedClassPatterns = ['5-120-1', '5-118-0'];
+    const allowedClassPatterns = ['MDL_mask_5-120-1 undefined', 'MDL_outerWrapper_5-120-1 MDL_alert_5-120-1 MDL_showCloseIcon_5-120-1 undefined', 'MDL_mask_5-120-1 undefined', 'MDL_outerWrapper_5-120-1 MDL_alert_5-120-1 undefined'];
+    let interceptCount = 0;
+
+    Element.prototype.appendChild = function(element) {
+        if (this === document.body && element && element.tagName === 'DIV') {
+            const testId = element.getAttribute('data-testid');
+            if (testId === 'beast-core-modal' || testId === 'beast-core-modal-mask') {
+                const className = element.className || '';
+                let isAllowed = false;
+                for (const pattern of allowedClassPatterns) {
+                    if (className.includes(pattern)) {
+                        isAllowed = true;
+                        break;
+                    }
+                }
+                if (!isAllowed) {
+                    console.log('[拦截器] 拦截弹窗 ' + testId + ' [' + (++interceptCount) + ']，class: "' + className + '"');
+                    const placeholder = document.createElement('div');
+                    placeholder.style.cssText = 'display:none!important;height:0!important;width:0!important;';
+                    return originalAppendChild.call(this, placeholder);
+                }
+            }
+        }
+        return originalAppendChild.call(this, element);
+    };
+    
+    console.log('[拦截器] ✅ 弹窗拦截器已启动，允许编号:', allowedClassPatterns);
+}
+
+// 目标域名
+const INTERCEPTOR_DOMAINS = ['agentseller.temu.com', 'seller.kuajingmaihuo.com'];
+
+// 注入拦截器到标签页
+async function injectPopupInterceptor(tabId, url) {
+    if (!url) return;
+    try {
+        const urlObj = new URL(url);
+        if (INTERCEPTOR_DOMAINS.includes(urlObj.hostname)) {
+            await chrome.scripting.executeScript({
+                target: { tabId: tabId, allFrames: true },
+                func: popupInterceptorCode,
+                world: 'MAIN',
+                injectImmediately: true
+            });
+        }
+    } catch (e) {
+        // 忽略无法注入的标签页（如chrome://页面）
+    }
+}
+
+// 监听标签页更新，在页面加载时注入拦截器
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status === 'loading' && tab.url) {
+        injectPopupInterceptor(tabId, tab.url);
+    }
+});
+
+// 监听标签页创建
+chrome.tabs.onCreated.addListener((tab) => {
+    if (tab.url) {
+        injectPopupInterceptor(tab.id, tab.url);
+    }
+});
+
+// 扩展启动时为所有已打开的目标标签页注入拦截器
+chrome.tabs.query({}, (tabs) => {
+    for (const tab of tabs) {
+        if (tab.url) {
+            injectPopupInterceptor(tab.id, tab.url);
+        }
+    }
+});

@@ -37,13 +37,5 @@
     "16": "icon.png",
     "48": "icon.png",
     "128": "icon.png"
-  },
-  "content_scripts": [
-    {
-      "matches": ["https://agentseller.temu.com/*"],
-      "js": ["popupInterceptor.js"],
-      "run_at": "document_start",
-      "all_frames": true
-    }
-  ]
+  }
 }

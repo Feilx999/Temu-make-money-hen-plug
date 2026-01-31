@@ -31,6 +31,8 @@ document.addEventListener('DOMContentLoaded', function() {
     let sellerTempCookie = null;
     let mallidCookie = null;
     let countdownInterval = null;
+    let cookieCheckInterval = null; // Cookie状态检查定时器
+    let userInfoFailCount = 0; // userInfo API失败计数器
     let logMessages = [];
     let isTaskRunning = false;
     let scheduledBtnDebounceTimer = null;
@@ -488,6 +490,127 @@ document.addEventListener('DOMContentLoaded', function() {
             
             updateCountdown();
             countdownInterval = setInterval(updateCountdown, 1000);
+        }
+        
+        // 启动Cookie状态检查定时器（每分钟执行一次）
+        startCookieStatusCheck();
+    }
+    
+    // 启动Cookie状态检查定时器
+    function startCookieStatusCheck() {
+        if (cookieCheckInterval) clearInterval(cookieCheckInterval);
+        
+        cookieCheckInterval = setInterval(async () => {
+            await checkCookieStatus();
+        }, 60000); // 每分钟检查一次
+    }
+    
+    // 检查Cookie状态
+    async function checkCookieStatus() {
+        const isExpired = !sellerTempCookie || 
+            (sellerTempCookie.expirationDate && sellerTempCookie.expirationDate * 1000 <= Date.now());
+        
+        if (isExpired) {
+            // Cookie已过期，尝试重新获取
+            await tryRefreshCookies();
+        } else {
+            // Cookie未过期，检查userInfo API
+            await checkUserInfoApi();
+        }
+    }
+    
+    // 尝试刷新Cookie
+    async function tryRefreshCookies() {
+        const currentUrl = await getCurrentTabUrl();
+        if (!currentUrl) return;
+        
+        const cookies = await getCookiesForUrl(currentUrl);
+        if (cookies.length === 0) return;
+        
+        const newSellerTemp = cookies.find(c => c.name === 'seller_temp');
+        const newMallid = cookies.find(c => c.name === 'mallid');
+        
+        if (newSellerTemp && newMallid) {
+            // 检查新Cookie是否有效（未过期）
+            if (newSellerTemp.expirationDate && newSellerTemp.expirationDate * 1000 > Date.now()) {
+                // 验证新Cookie是否有效
+                const shopName = await verifyAndGetShopName(newSellerTemp);
+                if (shopName) {
+                    // 更新本地变量
+                    sellerTempCookie = newSellerTemp;
+                    mallidCookie = newMallid;
+                    userInfoFailCount = 0;
+                    
+                    // 更新缓存
+                    const expiresAt = newSellerTemp.expirationDate * 1000;
+                    cacheCookiesToBackground(newMallid.value, newSellerTemp.value, shopName, expiresAt);
+                    
+                    // 更新界面
+                    renderCookiesInfo();
+                    shopNameDisplay.textContent = shopName;
+                    startCountdown();
+                    
+                    addLog(`[缓存] Cookie已自动刷新: ${shopName}`);
+                }
+            }
+        }
+    }
+    
+    // 验证Cookie并获取店铺名（不影响缓存的店铺名）
+    async function verifyAndGetShopName(cookieObj) {
+        try {
+            const headers = {
+                "accept": "*/*",
+                "content-type": "application/json",
+                "user-agent": navigator.userAgent
+            };
+            headers["cookie"] = `seller_temp=${cookieObj.value}`;
+            
+            const response = await fetch("https://agentseller.temu.com/api/seller/auth/userInfo", {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({})
+            });
+            
+            if (!response.ok) return null;
+            
+            const result = await response.json();
+            return result.result?.mallList?.[0]?.mallName || null;
+        } catch (e) {
+            return null;
+        }
+    }
+    
+    // 检查userInfo API（不影响缓存的店铺名）
+    async function checkUserInfoApi() {
+        if (!sellerTempCookie) return;
+        
+        const shopName = await verifyAndGetShopName(sellerTempCookie);
+        
+        if (shopName) {
+            // 成功，清除失败计数
+            userInfoFailCount = 0;
+        } else {
+            // 失败，增加失败计数
+            userInfoFailCount++;
+            
+            if (userInfoFailCount >= 3) {
+                // 累计失败3次，将Cookie视为过期
+                addLog(`[缓存] userInfo连续失败${userInfoFailCount}次，Cookie已视为过期`);
+                
+                // 更新倒计时显示
+                const countdownElement = document.getElementById('countdown');
+                if (countdownElement) {
+                    countdownElement.textContent = '(已过期)';
+                }
+                
+                // 将Cookie的过期时间设为当前时间（标记为过期）
+                if (sellerTempCookie) {
+                    sellerTempCookie.expirationDate = Date.now() / 1000;
+                }
+                
+                userInfoFailCount = 0;
+            }
         }
     }
     
@@ -1883,6 +2006,38 @@ document.addEventListener('DOMContentLoaded', function() {
             updateButtonProgress(mainBtn, percent);
         });
         
+        // 检查模板是否存在并更新按钮状态
+        async function updatePricingButtonsState() {
+            const stored = await chrome.storage.local.get('pricingTemplateList');
+            const templates = stored.pricingTemplateList || [];
+            const hasTemplates = templates.length > 0;
+            
+            nowBtn.disabled = !hasTemplates;
+            scheduleBtn.disabled = !hasTemplates;
+            
+            if (!hasTemplates) {
+                nowBtn.title = '请先保存核价模板';
+                scheduleBtn.title = '请先保存核价模板';
+                nowBtn.style.opacity = '0.5';
+                scheduleBtn.style.opacity = '0.5';
+            } else {
+                nowBtn.title = '';
+                scheduleBtn.title = '';
+                nowBtn.style.opacity = '1';
+                scheduleBtn.style.opacity = '1';
+            }
+        }
+        
+        // 初始化时检查模板状态
+        updatePricingButtonsState();
+        
+        // 监听storage变化，实时更新按钮状态
+        chrome.storage.onChanged.addListener((changes, namespace) => {
+            if (namespace === 'local' && changes.pricingTemplateList) {
+                updatePricingButtonsState();
+            }
+        });
+        
         // 从缓存加载配置
         chrome.storage.local.get('autoPricingConfig', function(result) {
             const config = result.autoPricingConfig || {};
@@ -1897,6 +2052,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // 立即核价按钮
         nowBtn.addEventListener('click', async function() {
             if (autoPricingRunning) return;
+            if (nowBtn.disabled) return;
             
             if (!mallidCookie || !sellerTempCookie) {
                 addLog('[核价] Cookie不可用');
@@ -1907,7 +2063,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // 定时核价按钮
-        scheduleBtn.addEventListener('click', function() {
+        scheduleBtn.addEventListener('click', async function() {
+            if (scheduleBtn.disabled) return;
+            
             const interval = parseInt(intervalSelect.value);
             
             if (interval === 0) {
@@ -2473,6 +2631,38 @@ document.addEventListener('DOMContentLoaded', function() {
             updateButtonProgress(mainBtn, percent);
         });
         
+        // 检查模板是否存在并更新按钮状态
+        async function updateComplianceButtonsState() {
+            const stored = await chrome.storage.local.get('complianceTemplateList');
+            const templates = stored.complianceTemplateList || [];
+            const hasTemplates = templates.length > 0;
+            
+            nowBtn.disabled = !hasTemplates;
+            scheduleBtn.disabled = !hasTemplates;
+            
+            if (!hasTemplates) {
+                nowBtn.title = '请先保存合规模板';
+                scheduleBtn.title = '请先保存合规模板';
+                nowBtn.style.opacity = '0.5';
+                scheduleBtn.style.opacity = '0.5';
+            } else {
+                nowBtn.title = '';
+                scheduleBtn.title = '';
+                nowBtn.style.opacity = '1';
+                scheduleBtn.style.opacity = '1';
+            }
+        }
+        
+        // 初始化时检查模板状态
+        updateComplianceButtonsState();
+        
+        // 监听storage变化，实时更新按钮状态
+        chrome.storage.onChanged.addListener((changes, namespace) => {
+            if (namespace === 'local' && changes.complianceTemplateList) {
+                updateComplianceButtonsState();
+            }
+        });
+        
         // 从缓存加载配置
         chrome.storage.local.get('autoComplianceConfig', function(result) {
             const config = result.autoComplianceConfig || {};
@@ -2487,6 +2677,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // 立即合规按钮
         nowBtn.addEventListener('click', async function() {
             if (autoComplianceRunning) return;
+            if (nowBtn.disabled) return;
             
             if (!mallidCookie || !sellerTempCookie) {
                 addLog('[合规] Cookie不可用');
@@ -2497,7 +2688,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // 定时合规按钮
-        scheduleBtn.addEventListener('click', function() {
+        scheduleBtn.addEventListener('click', async function() {
+            if (scheduleBtn.disabled) return;
+            
             const interval = parseInt(intervalSelect.value);
             
             if (interval === 0) {
@@ -3459,6 +3652,38 @@ document.addEventListener('DOMContentLoaded', function() {
             updateButtonProgress(mainBtn, percent);
         });
         
+        // 检查模板是否存在并更新按钮状态
+        async function updateActivityButtonsState() {
+            const stored = await chrome.storage.local.get('activityTemplateList');
+            const templates = stored.activityTemplateList || [];
+            const hasTemplates = templates.length > 0;
+            
+            nowBtn.disabled = !hasTemplates;
+            scheduleBtn.disabled = !hasTemplates;
+            
+            if (!hasTemplates) {
+                nowBtn.title = '请先保存活动模板';
+                scheduleBtn.title = '请先保存活动模板';
+                nowBtn.style.opacity = '0.5';
+                scheduleBtn.style.opacity = '0.5';
+            } else {
+                nowBtn.title = '';
+                scheduleBtn.title = '';
+                nowBtn.style.opacity = '1';
+                scheduleBtn.style.opacity = '1';
+            }
+        }
+        
+        // 初始化时检查模板状态
+        updateActivityButtonsState();
+        
+        // 监听storage变化，实时更新按钮状态
+        chrome.storage.onChanged.addListener((changes, namespace) => {
+            if (namespace === 'local' && changes.activityTemplateList) {
+                updateActivityButtonsState();
+            }
+        });
+        
         // 从缓存加载配置
         chrome.storage.local.get('autoActivityConfig', function(result) {
             const config = result.autoActivityConfig || {};
@@ -3473,6 +3698,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // 立即报名按钮
         nowBtn.addEventListener('click', async function() {
             if (autoActivityRunning) return;
+            if (nowBtn.disabled) return;
             
             if (!mallidCookie || !sellerTempCookie) {
                 addLog('[活动] Cookie不可用');
@@ -3483,7 +3709,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // 定时报名按钮
-        scheduleBtn.addEventListener('click', function() {
+        scheduleBtn.addEventListener('click', async function() {
+            if (scheduleBtn.disabled) return;
+            
             const interval = parseInt(intervalSelect.value);
             
             if (interval === 0) {

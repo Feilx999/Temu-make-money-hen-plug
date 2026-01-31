@@ -1,7 +1,12 @@
 const ComplianceService = {
     COMPLIANCE_BASE_URL: "https://agentseller.temu.com/ms/bg-flux-ms/compliance_property",
     REAL_PHOTO_URL: "https://agentseller.temu.com/api/flash/real_picture/batch_upload",
+    REAL_PHOTO_LIST_URL: "https://agentseller.temu.com/api/flash/real_picture/list",
     FILE_UPLOAD_URL: "https://agentseller.temu.com/api/galerie/general_file",
+    
+    // 分页配置
+    PAGE_SIZE: 50,
+    MAX_RETRY: 3,
     
     logCallback: null,
     progressCallback: null,
@@ -192,20 +197,20 @@ const ComplianceService = {
         }
     },
     
-    // 解析实拍图数据
+    // 解析实拍图数据 - 确保数值类型正确
     parseRealPictureData(labelList) {
         if (!labelList || labelList.length === 0) return [];
         
         // 按position分组
         const positionMap = {};
         for (const item of labelList) {
-            const pos = item.position;
+            const pos = Number(item.position);
             if (!positionMap[pos]) {
                 positionMap[pos] = [];
             }
             positionMap[pos].push({
                 image_url: item.image,
-                position_type: item.position_type
+                position_type: Number(item.position_type)
             });
         }
         
@@ -246,23 +251,27 @@ const ComplianceService = {
         return templateList;
     },
     
-    // 查询待处理的SPU列表
-    async queryPendingSpuList(catId, taskTypes, mallid, sellerTemp) {
+    // 查询待处理的SPU列表（支持分页）
+    async queryPendingSpuList(catId, taskTypes, mallid, sellerTemp, pageNum = 1) {
         const headers = this.getHeaders(mallid);
         headers["cookie"] = `seller_temp=${sellerTemp}`;
+        
+        // 确保数值类型正确
+        const numericCatId = typeof catId === 'string' ? parseInt(catId, 10) : Number(catId);
+        const numericTaskTypes = taskTypes.map(t => typeof t === 'string' ? parseInt(t, 10) : Number(t));
         
         try {
             const response = await fetch(`${this.COMPLIANCE_BASE_URL}/page_query`, {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify({
-                    page_num: 1,
-                    page_size: 100,
+                    page_num: pageNum,
+                    page_size: this.PAGE_SIZE,
                     type: 2,
                     task_status_list: [2],
-                    cat_ids: [catId],
+                    cat_ids: [numericCatId],
                     query_type: 2,
-                    task_type_list: taskTypes
+                    task_type_list: numericTaskTypes
                 })
             });
             
@@ -270,10 +279,40 @@ const ComplianceService = {
             if (data.success) {
                 return { success: true, data: data.result?.data || [], total: data.result?.total || 0 };
             }
-            this.addLog(`[合规] 失败响应: ${JSON.stringify(data)}`);
             return { success: false, message: data.error_msg || '查询失败' };
         } catch (e) {
-            this.addLog(`[合规] 失败异常: ${e.message}`);
+            return { success: false, message: e.message };
+        }
+    },
+    
+    // 查询需要上传实拍图的SPU列表（使用独立API，支持分页）
+    async queryRealPhotoSpuList(catId, mallid, sellerTemp, page = 1) {
+        const headers = this.getHeaders(mallid);
+        headers["cookie"] = `seller_temp=${sellerTemp}`;
+        
+        const numericCatId = typeof catId === 'string' ? parseInt(catId, 10) : Number(catId);
+        
+        try {
+            const response = await fetch(this.REAL_PHOTO_LIST_URL, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify({
+                    page: page,
+                    page_size: this.PAGE_SIZE,
+                    cate_id_list: [numericCatId],
+                    rapid_screen_status_list: [1]  // 状态1表示需要上传
+                })
+            });
+            
+            const data = await response.json();
+            if (data.success !== false) { 
+                const result = data.result || {};
+                const items = result.items || [];
+                const spuList = items.map(item => item.spu_id).filter(id => id);
+                return { success: true, data: spuList, total: result.total || 0 };
+            }
+            return { success: false, message: data.error_msg || '查询失败' };
+        } catch (e) {
             return { success: false, message: e.message };
         }
     },
@@ -283,12 +322,20 @@ const ComplianceService = {
         const headers = this.getHeaders(mallid);
         headers["cookie"] = `seller_temp=${sellerTemp}`;
         
+        // 确保good_info_list中的数值类型正确 - 严格按照Python参考代码
+        const normalizedGoodInfoList = goodInfoList.map(item => ({
+            spu_id: item.spu_id,
+            goods_id: item.goods_id,
+            cat_id: typeof item.cat_id === 'string' ? parseInt(item.cat_id, 10) : Number(item.cat_id),
+            task_id: item.task_id
+        }));
+        
         try {
             const response = await fetch(`${this.COMPLIANCE_BASE_URL}/batch_edit_compliance`, {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify({
-                    good_info_list: goodInfoList,
+                    good_info_list: normalizedGoodInfoList,
                     confirm_type: 4,
                     template_edit_request: template,
                     batch_upload_task_type: 1
@@ -306,59 +353,6 @@ const ComplianceService = {
             }
             this.addLog(`[合规] 失败响应: ${JSON.stringify(data)}`);
             return { success: false, message: data.error_msg || '提交失败' };
-        } catch (e) {
-            this.addLog(`[合规] 失败异常: ${e.message}`);
-            return { success: false, message: e.message };
-        }
-    },
-    
-    // 批量上传实拍图
-    async batchUploadRealPicture(spuIds, catId, realPictureInfoList, mallid, sellerTemp) {
-        if (!realPictureInfoList || realPictureInfoList.length === 0) {
-            return { success: true, total: 0, message: '无实拍图' };
-        }
-        
-        const headers = this.getHeaders(mallid);
-        headers["cookie"] = `seller_temp=${sellerTemp}`;
-        
-        // 构建上传图片列表
-        const uploadImageList = [];
-        for (const pos of realPictureInfoList) {
-            const position = pos.position;
-            for (const skuPhoto of (pos.sku_photo_info_list || [])) {
-                for (const img of (skuPhoto.image_list || [])) {
-                    uploadImageList.push({
-                        position: position,
-                        position_type: img.position_type,
-                        image: img.image_url
-                    });
-                }
-            }
-        }
-        
-        if (uploadImageList.length === 0) {
-            return { success: true, total: 0, message: '无实拍图' };
-        }
-        
-        try {
-            const response = await fetch(this.REAL_PHOTO_URL, {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify({
-                    spu_ids: spuIds.map(id => parseInt(id)),
-                    confirm_type: 4,
-                    batch_upload_task_type: 1,
-                    upload_image_list: uploadImageList,
-                    cate_id_list: [catId]
-                })
-            });
-            
-            const data = await response.json();
-            if (data.success) {
-                return { success: true, total: data.result?.total || 0 };
-            }
-            this.addLog(`[合规] 失败响应: ${JSON.stringify(data)}`);
-            return { success: false, message: data.error_msg || '上传失败' };
         } catch (e) {
             this.addLog(`[合规] 失败异常: ${e.message}`);
             return { success: false, message: e.message };
@@ -385,38 +379,6 @@ const ComplianceService = {
         } catch (e) {
             return { success: false, message: e.message };
         }
-    },
-    
-    // 创建识别码Excel文件内容（使用xlsx库或简单CSV格式）
-    createGoodsCodeExcelBlob(spuIds, goodsCode) {
-        // 使用简单的xlsx格式创建文件
-        // 参考模板格式：SPU ID, 识别码, 操作类型
-        const ExcelJS = window.ExcelJS;
-        
-        if (ExcelJS) {
-            // 如果有ExcelJS库，使用它创建xlsx
-            return this.createExcelWithExcelJS(spuIds, goodsCode);
-        } else {
-            // 否则使用简单的CSV转xlsx方式
-            return this.createSimpleExcel(spuIds, goodsCode);
-        }
-    },
-    
-    // 使用简单方式创建Excel（基于模板文件）
-    async createSimpleExcel(spuIds, goodsCode) {
-        // 创建一个简单的xlsx文件
-        // 使用SheetJS (xlsx) 库的格式
-        const header = ['spu_id', '商品识别码', '操作类型'];
-        const rows = spuIds.map(spuId => [spuId, goodsCode, '更新']);
-        
-        // 构建CSV内容然后转换
-        let csvContent = header.join(',') + '\n';
-        for (const row of rows) {
-            csvContent += row.join(',') + '\n';
-        }
-        
-        // 返回CSV的Blob（后续需要转换为xlsx）
-        return new Blob([csvContent], { type: 'text/csv' });
     },
     
     // 上传识别码Excel文件
@@ -755,146 +717,452 @@ const ComplianceService = {
         return new Blob([output], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     },
     
-    // 执行合规任务
+    // 解析SPU数据列表 - 严格按照Python的parse_spu_tasks函数
+    parseSpuTasks(dataList) {
+        const spuTasks = [];
+        for (const item of dataList) {
+            spuTasks.push({
+                spu_id: item.spu_id,
+                cat_id: item.cat_id,
+                goods_id: item.goods_id,
+                wait_task_dtolist: (item.wait_task_dtolist || []).map(t => ({
+                    task_id: t.task_id,
+                    task_type: t.task_type
+                }))
+            });
+        }
+        return spuTasks;
+    },
+    
+    // 提交常规合规信息 - 严格按照Python的submit_normal_compliance函数
+    async submitNormalCompliance(spuTasks, taskType, template, mallid, sellerTemp) {
+        const taskName = template.task_name || `task_type=${taskType}`;
+        
+        // 构建当前任务类型的good_info_list
+        const goodInfoList = [];
+        for (const task of spuTasks) {
+            let taskId = null;
+            for (const waitItem of task.wait_task_dtolist) {
+                if (waitItem.task_type === taskType) {
+                    taskId = waitItem.task_id;
+                    break;
+                }
+            }
+            
+            if (taskId) {
+                goodInfoList.push({
+                    spu_id: task.spu_id,
+                    goods_id: task.goods_id,
+                    cat_id: task.cat_id,
+                    task_id: taskId
+                });
+            }
+        }
+        
+        if (goodInfoList.length === 0) {
+            return { successCount: 0, failCount: 0 };
+        }
+        
+        // 调用批量提交API
+        const result = await this.batchEditCompliance(goodInfoList, template, mallid, sellerTemp);
+        
+        if (result.success) {
+            return { 
+                successCount: result.totalSuccess || 0, 
+                failCount: result.totalFail || 0,
+                taskName 
+            };
+        } else {
+            throw new Error(result.message || '提交失败');
+        }
+    },
+    
+    // 提交实拍图 - 严格按照Python的submit_real_photo函数
+    async submitRealPhoto(spuIds, uploadImageList, catId, mallid, sellerTemp) {
+        if (!uploadImageList || uploadImageList.length === 0) {
+            throw new Error('没有可上传的实拍图');
+        }
+        
+        const headers = this.getHeaders(mallid);
+        headers["cookie"] = `seller_temp=${sellerTemp}`;
+        
+        // 确保spu_ids为整数数组 - 严格按照Python代码
+        const numericSpuIds = spuIds.map(id => {
+            const num = typeof id === 'string' ? parseInt(id, 10) : Number(id);
+            return isNaN(num) ? id : num;
+        });
+        const numericCatId = typeof catId === 'string' ? parseInt(catId, 10) : Number(catId);
+        
+        // 构建请求数据 - 严格按照Python代码的字段顺序和格式
+        const submitData = {
+            spu_ids: numericSpuIds,
+            confirm_type: 4,
+            batch_upload_task_type: 1,
+            upload_image_list: uploadImageList,
+            cate_id_list: [numericCatId]
+        };
+        
+        try {
+            const response = await fetch(this.REAL_PHOTO_URL, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(submitData)
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                const result = data.result || {};
+                const total = result.total || 0;
+                const failCount = total < spuIds.length ? spuIds.length - total : 0;
+                return { successCount: total, failCount: failCount };
+            } else {
+                throw new Error(data.error_msg || '实拍图上传失败');
+            }
+        } catch (e) {
+            throw new Error(e.message || '实拍图上传失败');
+        }
+    },
+    
+    // 处理一页的常规合规信息和商品识别码 - 严格按照Python的process_compliance_page函数
+    async processCompliancePage(dataList, taskTypeTemplates, normalTypes, hasGoodsCode, mallId, catId, mallid, sellerTemp) {
+        const pageStats = {
+            normal_success: 0,
+            normal_fail: 0,
+            goods_code_success: 0,
+            goods_code_fail: 0
+        };
+        
+        const spuTasks = this.parseSpuTasks(dataList);
+        const spuIds = spuTasks.map(task => task.spu_id);
+        
+        // 处理常规任务
+        if (normalTypes && normalTypes.length > 0) {
+            for (const taskType of normalTypes) {
+                const template = taskTypeTemplates[taskType];
+                if (!template) continue;
+                
+                const taskName = template.task_name || `task_type=${taskType}`;
+                
+                // 带重试的提交
+                for (let retry = 0; retry < this.MAX_RETRY; retry++) {
+                    try {
+                        const result = await this.submitNormalCompliance(spuTasks, taskType, template, mallid, sellerTemp);
+                        pageStats.normal_success += result.successCount;
+                        pageStats.normal_fail += result.failCount;
+                        if (result.successCount > 0) {
+                            this.addLog(`    ✅ [${taskName}] 成功: ${result.successCount}, 失败: ${result.failCount}`);
+                        }
+                        break;
+                    } catch (e) {
+                        if (retry === this.MAX_RETRY - 1) {
+                            this.addLog(`    ❌ [${taskName}] 提交失败(重试${this.MAX_RETRY}次后): ${e.message}`);
+                            // 统计该任务类型匹配的SPU数量为失败
+                            let matchingCount = 0;
+                            for (const task of spuTasks) {
+                                for (const waitItem of task.wait_task_dtolist) {
+                                    if (waitItem.task_type === taskType) {
+                                        matchingCount++;
+                                        break;
+                                    }
+                                }
+                            }
+                            pageStats.normal_fail += matchingCount;
+                        }
+                    }
+                }
+            }
+        }
+        
+        // 处理识别码任务
+        if (hasGoodsCode && spuIds.length > 0) {
+            const template = taskTypeTemplates[61];
+            
+            // 带重试的提交
+            for (let retry = 0; retry < this.MAX_RETRY; retry++) {
+                try {
+                    const result = await this.batchUploadGoodsCode(spuIds, template, mallid, sellerTemp);
+                    if (result.success) {
+                        pageStats.goods_code_success += result.total || spuIds.length;
+                        this.addLog(`    ✅ [识别码] 成功: ${result.total || spuIds.length}`);
+                    } else {
+                        throw new Error(result.message);
+                    }
+                    break;
+                } catch (e) {
+                    if (retry === this.MAX_RETRY - 1) {
+                        this.addLog(`    ❌ [识别码] 提交失败(重试${this.MAX_RETRY}次后): ${e.message}`);
+                        pageStats.goods_code_fail += spuIds.length;
+                    }
+                }
+            }
+        }
+        
+        return pageStats;
+    },
+    
+    // 处理一页的实拍图上传 - 严格按照Python的process_real_photo_page函数
+    async processRealPhotoPage(spuList, uploadImageList, catId, mallid, sellerTemp) {
+        const pageStats = {
+            real_photo_success: 0,
+            real_photo_fail: 0
+        };
+        
+        if (!spuList || spuList.length === 0) {
+            return pageStats;
+        }
+        
+        // 带重试的提交
+        for (let retry = 0; retry < this.MAX_RETRY; retry++) {
+            try {
+                const result = await this.submitRealPhoto(spuList, uploadImageList, catId, mallid, sellerTemp);
+                pageStats.real_photo_success += result.successCount;
+                pageStats.real_photo_fail += result.failCount;
+                if (result.successCount > 0) {
+                    this.addLog(`    ✅ [实拍图] 成功: ${result.successCount}, 失败: ${result.failCount}`);
+                }
+                break;
+            } catch (e) {
+                if (retry === this.MAX_RETRY - 1) {
+                    this.addLog(`    ❌ [实拍图] 提交失败(重试${this.MAX_RETRY}次后): ${e.message}`);
+                    pageStats.real_photo_fail += spuList.length;
+                }
+            }
+        }
+        
+        return pageStats;
+    },
+    
+    // 执行合规任务 - 严格按照Python主流程实现
     async executeComplianceTask(mallid, sellerTemp, shopName) {
         this.complianceLogs = [];
+        
+        // 统计数据 - 严格按照Python的stats结构
+        const stats = {
+            total_success: 0,
+            total_fail: 0,
+            normal_success: 0,
+            normal_fail: 0,
+            goods_code_success: 0,
+            goods_code_fail: 0,
+            real_photo_success: 0,
+            real_photo_fail: 0
+        };
         
         try {
             // 获取保存的合规模板
             const stored = await chrome.storage.local.get('complianceTemplateList');
-            const templates = stored.complianceTemplateList || [];
+            const templateData = stored.complianceTemplateList || [];
             
-            if (templates.length === 0) {
+            if (templateData.length === 0) {
                 this.addLog('[合规] 无可用模板');
                 return { success: false, message: '无可用模板' };
             }
             
-            this.addLog('[合规] 开始执行合规任务...');
             this.updateProgress(0, 100, '准备中...');
             
-            let totalSuccess = 0;
-            let totalFail = 0;
-            let processedTemplates = 0;
-            
-            for (const templateConfig of templates) {
+            // ==================== 遍历模板数据 ====================
+            for (let templateIndex = 0; templateIndex < templateData.length; templateIndex++) {
+                const templateConfig = templateData[templateIndex];
+                
+                this.addLog(`处理模板 ${templateIndex + 1}/${templateData.length}`);
+                
+                // 解析当前 template_config 的数据 - 严格按照Python代码
+                const mallId = templateConfig.mall_id || mallid;
                 const catId = templateConfig.cat_id;
+                const inputSpuList = templateConfig.input_spu || [];
                 const templateList = templateConfig.template_list || [];
                 const realPictureInfoList = templateConfig.real_picture_info_list || [];
                 
-                // 过滤出已启用的任务(task_status=3)
-                const enabledTemplates = templateList.filter(t => t.task_status === 3);
-                const taskTypes = enabledTemplates.map(t => t.task_type);
-                
-                if (taskTypes.length === 0) {
-                    processedTemplates++;
-                    continue;
+                // 解析启用的任务类型 (task_status=3表示已启用) - 严格按照Python代码
+                const taskTypeTemplates = {};
+                for (const template of templateList) {
+                    const taskType = template.task_type;
+                    const taskStatus = template.task_status;
+                    if (taskStatus === 3 && taskType) {
+                        taskTypeTemplates[taskType] = template;
+                    }
                 }
                 
-                this.addLog(`[合规] 处理类目 ${catId}，任务类型: ${taskTypes.length}个`);
+                this.addLog(`mall_id=${mallId}, cat_id=${catId}`);
+                // this.addLog(`启用的任务类型: ${Object.keys(taskTypeTemplates).join(', ')}`);
                 
-                // 查询待处理的SPU
-                const pendingResult = await this.queryPendingSpuList(catId, taskTypes, mallid, sellerTemp);
-                if (!pendingResult.success || pendingResult.data.length === 0) {
-                    this.addLog(`[合规] 类目 ${catId} 无待处理SPU`);
-                    processedTemplates++;
-                    this.updateProgress(processedTemplates, templates.length, `处理中 ${processedTemplates}/${templates.length}`);
-                    continue;
+                // 分离常规任务和特殊任务 - 严格按照Python代码
+                const normalTypes = Object.keys(taskTypeTemplates).map(Number).filter(t => t !== 61);
+                const hasGoodsCode = 61 in taskTypeTemplates || taskTypeTemplates[61] !== undefined;
+                const hasRealPhoto = realPictureInfoList.length > 0;
+                
+                this.addLog(`任务配置: 常规任务=[${normalTypes.join(',')}], 识别码=${hasGoodsCode ? '是' : '否'}, 实拍图=${hasRealPhoto ? '是' : '否'}`);
+                
+                // ==================== 处理常规合规信息和商品识别码 ====================
+                if (Object.keys(taskTypeTemplates).length > 0) {
+                    // 查询首页数据 - 使用所有启用的任务类型
+                    const allTaskTypes = Object.keys(taskTypeTemplates).map(Number);
+                    
+                    try {
+                        const queryResult = await this.queryPendingSpuList(catId, allTaskTypes, mallid, sellerTemp, 1);
+                        
+                        if (!queryResult.success) {
+                            this.addLog(`❌ 查询失败: ${queryResult.message}`);
+                            continue;
+                        }
+                        
+                        const total = queryResult.total;
+                        const firstDataList = queryResult.data;
+                        
+                        this.addLog(`找到 ${total} 个待处理SPU`);
+                        
+                        if (total > 0 && firstDataList.length > 0) {
+                            // 处理首页数据
+                            this.addLog(`  处理第 1 页 (${firstDataList.length} 个SPU)...`);
+                            const pageStats = await this.processCompliancePage(
+                                firstDataList, taskTypeTemplates, normalTypes, hasGoodsCode, 
+                                mallId, catId, mallid, sellerTemp
+                            );
+                            stats.normal_success += pageStats.normal_success;
+                            stats.normal_fail += pageStats.normal_fail;
+                            stats.goods_code_success += pageStats.goods_code_success;
+                            stats.goods_code_fail += pageStats.goods_code_fail;
+                            
+                            // 计算总页数
+                            const pageCount = Math.ceil(total / this.PAGE_SIZE);
+                            
+                            // 遍历剩余页数
+                            for (let page = 2; page <= pageCount; page++) {
+                                try {
+                                    const pageQueryResult = await this.queryPendingSpuList(catId, allTaskTypes, mallid, sellerTemp, page);
+                                    
+                                    if (!pageQueryResult.success) {
+                                        this.addLog(`  ❌ 第 ${page} 页查询失败: ${pageQueryResult.message}`);
+                                        continue;
+                                    }
+                                    
+                                    const pageDataList = pageQueryResult.data;
+                                    
+                                    if (pageDataList.length > 0) {
+                                        this.addLog(`  处理第 ${page} 页 (${pageDataList.length} 个SPU)...`);
+                                        const pageStats = await this.processCompliancePage(
+                                            pageDataList, taskTypeTemplates, normalTypes, hasGoodsCode,
+                                            mallId, catId, mallid, sellerTemp
+                                        );
+                                        stats.normal_success += pageStats.normal_success;
+                                        stats.normal_fail += pageStats.normal_fail;
+                                        stats.goods_code_success += pageStats.goods_code_success;
+                                        stats.goods_code_fail += pageStats.goods_code_fail;
+                                    }
+                                } catch (e) {
+                                    this.addLog(`  ❌ 第 ${page} 页处理异常: ${e.message}`);
+                                }
+                            }
+                        } else {
+                            this.addLog('  没有需要处理的常规合规信息和商品识别码数据');
+                        }
+                    } catch (e) {
+                        this.addLog(`❌ 查询异常: ${e.message}`);
+                    }
                 }
                 
-                const spuTasks = pendingResult.data.map(item => ({
-                    spu_id: item.spu_id,
-                    cat_id: item.cat_id,
-                    goods_id: item.goods_id,
-                    wait_task_dtolist: (item.wait_task_dtolist || []).map(t => ({
-                        task_id: t.task_id,
-                        task_type: t.task_type
-                    }))
-                }));
-                
-                const spuIds = spuTasks.map(t => t.spu_id);
-                this.addLog(`[合规] 找到 ${spuIds.length} 个待处理SPU`);
-                
-                // 处理常规任务（排除识别码任务61）
-                const normalTypes = taskTypes.filter(t => t !== 61);
-                
-                for (const taskType of normalTypes) {
-                    const template = enabledTemplates.find(t => t.task_type === taskType);
-                    if (!template) continue;
+                // ==================== 处理实拍图任务 ====================
+                if (hasRealPhoto) {
+                    this.addLog(`[类目 ${catId}] 查询需要上传商品实拍图的SPU...`);
                     
-                    const taskName = template.task_name || `任务${taskType}`;
-                    
-                    // 构建good_info_list
-                    const goodInfoList = [];
-                    for (const task of spuTasks) {
-                        const waitItem = task.wait_task_dtolist.find(w => w.task_type === taskType);
-                        if (waitItem) {
-                            goodInfoList.push({
-                                spu_id: task.spu_id,
-                                goods_id: task.goods_id,
-                                cat_id: task.cat_id,
-                                task_id: waitItem.task_id
-                            });
+                    // 构建上传图片列表 - 严格按照Python代码的格式
+                    const uploadImageList = [];
+                    for (const pos of realPictureInfoList) {
+                        const position = pos.position;
+                        for (const skuPhoto of (pos.sku_photo_info_list || [])) {
+                            for (const img of (skuPhoto.image_list || [])) {
+                                uploadImageList.push({
+                                    position: position,
+                                    position_type: img.position_type,
+                                    image: img.image_url  // 严格使用image_url字段
+                                });
+                            }
                         }
                     }
                     
-                    if (goodInfoList.length === 0) continue;
+                    if (uploadImageList.length === 0) {
+                        this.addLog('  ❌ 没有可上传的实拍图配置');
+                        continue;
+                    }
                     
-                    const result = await this.batchEditCompliance(goodInfoList, template, mallid, sellerTemp);
+                    this.addLog(`  实拍图配置数量: ${uploadImageList.length}`);
                     
-                    if (result.success) {
-                        totalSuccess += result.totalSuccess;
-                        totalFail += result.totalFail;
-                        this.complianceLogs.push(`[${taskName}] 成功: ${result.totalSuccess}, 失败: ${result.totalFail}`);
-                        // 仅在失败数不为0时输出日志
-                        if (result.totalFail > 0) {
-                            this.addLog(`[合规] [${taskName}] 成功: ${result.totalSuccess}, 失败: ${result.totalFail}`);
+                    try {
+                        // 查询首页需要上传实拍图的SPU
+                        const queryResult = await this.queryRealPhotoSpuList(catId, mallid, sellerTemp, 1);
+                        
+                        if (!queryResult.success) {
+                            this.addLog(`  ❌ 查询失败: ${queryResult.message}`);
+                            continue;
                         }
-                    } else {
-                        totalFail += goodInfoList.length;
-                        this.complianceLogs.push(`[${taskName}] 提交失败: ${result.message}`);
-                        this.addLog(`[合规] [${taskName}] 提交失败: ${result.message}`);
+                        
+                        const total = queryResult.total;
+                        const spuList = queryResult.data;
+                        
+                        this.addLog(`  找到 ${total} 个待上传实拍图的SPU`);
+                        
+                        if (total > 0 && spuList.length > 0) {
+                            // 处理首页数据
+                            this.addLog(`  处理第 1 页 (${spuList.length} 个SPU)...`);
+                            const pageStats = await this.processRealPhotoPage(spuList, uploadImageList, catId, mallid, sellerTemp);
+                            stats.real_photo_success += pageStats.real_photo_success;
+                            stats.real_photo_fail += pageStats.real_photo_fail;
+                            
+                            // 计算总页数
+                            const pageCount = Math.ceil(total / this.PAGE_SIZE);
+                            
+                            // 遍历剩余页数
+                            for (let page = 2; page <= pageCount; page++) {
+                                try {
+                                    const pageQueryResult = await this.queryRealPhotoSpuList(catId, mallid, sellerTemp, page);
+                                    
+                                    if (!pageQueryResult.success) {
+                                        this.addLog(`  ❌ 第 ${page} 页查询失败: ${pageQueryResult.message}`);
+                                        continue;
+                                    }
+                                    
+                                    const pageSpuList = pageQueryResult.data;
+                                    
+                                    if (pageSpuList.length > 0) {
+                                        this.addLog(`  处理第 ${page} 页 (${pageSpuList.length} 个SPU)...`);
+                                        const pageStats = await this.processRealPhotoPage(pageSpuList, uploadImageList, catId, mallid, sellerTemp);
+                                        stats.real_photo_success += pageStats.real_photo_success;
+                                        stats.real_photo_fail += pageStats.real_photo_fail;
+                                    }
+                                } catch (e) {
+                                    this.addLog(`  ❌ 第 ${page} 页处理异常: ${e.message}`);
+                                }
+                            }
+                        } else {
+                            this.addLog('  没有需要上传实拍图的SPU');
+                        }
+                    } catch (e) {
+                        this.addLog(`  ❌ 查询异常: ${e.message}`);
                     }
                 }
                 
-                // 处理实拍图任务
-                if (realPictureInfoList.length > 0) {
-                    const realResult = await this.batchUploadRealPicture(spuIds, catId, realPictureInfoList, mallid, sellerTemp);
-                    if (realResult.success && realResult.total > 0) {
-                        totalSuccess += realResult.total;
-                        this.complianceLogs.push(`[实拍图] 成功: ${realResult.total}`);
-                    } else if (!realResult.success) {
-                        this.complianceLogs.push(`[实拍图] 失败: ${realResult.message}`);
-                        this.addLog(`[合规] [实拍图] 失败: ${realResult.message}`);
-                    }
-                }
-                
-                // 处理识别码任务（task_type=61）
-                const goodsCodeTemplate = enabledTemplates.find(t => t.task_type === 61);
-                if (goodsCodeTemplate) {
-                    const goodsCodeResult = await this.batchUploadGoodsCode(spuIds, goodsCodeTemplate, mallid, sellerTemp);
-                    if (goodsCodeResult.success) {
-                        totalSuccess += goodsCodeResult.total;
-                        this.complianceLogs.push(`[识别码] 成功: ${goodsCodeResult.total}`);
-                    } else {
-                        totalFail += spuIds.length;
-                        this.complianceLogs.push(`[识别码] 失败: ${goodsCodeResult.message}`);
-                        this.addLog(`[合规] [识别码] 失败: ${goodsCodeResult.message}`);
-                    }
-                }
-                
-                processedTemplates++;
-                this.updateProgress(processedTemplates, templates.length, `处理中 ${processedTemplates}/${templates.length}`);
+                this.updateProgress(templateIndex + 1, templateData.length, `处理中 ${templateIndex + 1}/${templateData.length}`);
             }
             
-            // 仅在有失败时输出汇总日志
-            if (totalFail > 0) {
-                this.addLog(`[合规] 合规任务完成，成功: ${totalSuccess}, 失败: ${totalFail}`);
-            } else {
-                this.addLog(`[合规] 合规任务完成，成功: ${totalSuccess}`);
-            }
+            // 汇总统计 - 严格按照Python代码
+            stats.total_success = stats.normal_success + stats.goods_code_success + stats.real_photo_success;
+            stats.total_fail = stats.normal_fail + stats.goods_code_fail + stats.real_photo_fail;
+            
+            // 输出统计日志 - 严格按照Python代码格式
+            this.addLog(`常规任务: 成功 ${stats.normal_success}, 失败 ${stats.normal_fail}`);
+            this.addLog(`识别码任务: 成功 ${stats.goods_code_success}, 失败 ${stats.goods_code_fail}`);
+            this.addLog(`实拍图任务: 成功 ${stats.real_photo_success}, 失败 ${stats.real_photo_fail}`);
+            this.addLog(`总计: 成功 ${stats.total_success}, 失败 ${stats.total_fail}`);
+            
             this.updateProgress(100, 100, '完成');
             
-            return { success: true, totalSuccess, totalFail, logs: this.complianceLogs };
+            return { 
+                success: true, 
+                totalSuccess: stats.total_success, 
+                totalFail: stats.total_fail, 
+                logs: this.complianceLogs,
+                stats: stats
+            };
         } catch (e) {
             this.addLog(`[合规] 任务失败: ${e.message}`);
             this.updateProgress(0, 100, '失败');
