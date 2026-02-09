@@ -1,0 +1,33 @@
+以下为类似python代码的合规流程， 你需要将 @ 的合规流程更改为以下的流程，严格使用原代码中的接口字段，不考虑token消耗去最大限度的高质量完成：
+
+遍历模板数据template_data（此时进入for template_config in template_data的循环）
+	解析当前 template_config 的数据 mall_id、	cat_id、input_spu_list、template_list、real_picture_info_list、task_type_templates等
+	使用 task_type_templates 和 cat_id从 page_query 接口查询当前类目需要上传常规合规信息 和 商品识别码 的 SPU总数total 和 SPU列表
+	查询的首页数据为 SPU列表（也就是原有代码中的 data_list ，此处需要更改为 first_data_list） 和 首页数据中的 total值（待上传信息的SPU总数）
+	将首页数据进行解析并进行 常规合规信息 和 商品识别码 的提交（失败重试最大三次， 仅在最后一次都失败时候才输出日志提示）
+	使用ceil(total / pageSize) 计算 该类目需要进行上传合规信息spu的 页数 page_count
+	遍历页数 range(2, page_count + 1)（此时进入for page in page_count的循环）
+		将该页数据进行解析并进行 常规合规信息 和 商品识别码 的提交（失败重试最大三次， 仅在最后一次都失败时候才输出日志提示）
+		直到完成全部页数（此时退出for page in page_count的循环）
+	
+	使用 cat_id 从real_picture/list接口查询当前类目 需要上传商品实拍图的 SPU总数total 和 SPU列表
+	查询首页需要上传商品实拍图的 SPU总数total 和 SPU列表spu_list（参考代码为 @ ）
+	将首页数据进行解析并进行 实拍图上传 的提交（失败重试最大三次， 仅在最后一次都失败时候才输出日志提示）
+	使用ceil(total / pageSize) 计算 该类目需要进行上传商品实拍图spu的 页数 page_count
+	遍历页数 range(2, page_count + 1)（此时进入for page in page_count的循环）
+		将该页数据进行解析并进行 商品实拍图 的提交（失败重试最大三次， 仅在最后一次都失败时候才输出日志提示）
+		直到完成全部页数（此时退出for page in page_count的循环）
+	
+	直到完成全部模板（此时退出for template_config in template_data的循环）
+
+
+注意：
+1. 常规合规信息、商品识别码、商品实拍图 的提交均使用原有代码 @ 中已有的方法
+2. 每次的提交任务均使用 try...except... 来捕获异常 且均使用 finally 来删除 提交响应 和 查询对应页数的响应
+3. 
+
+
+
+
+
+

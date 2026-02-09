@@ -599,8 +599,11 @@ function popupInterceptorCode() {
     window.__TEMU_POPUP_INTERCEPTOR__ = true;
     
     const originalAppendChild = Element.prototype.appendChild;
-    // const allowedClassPatterns = ['5-120-1', '5-118-0'];
-    const allowedClassPatterns = ['MDL_mask_5-120-1 undefined', 'MDL_outerWrapper_5-120-1 MDL_alert_5-120-1 MDL_showCloseIcon_5-120-1 undefined', 'MDL_mask_5-120-1 undefined', 'MDL_outerWrapper_5-120-1 MDL_alert_5-120-1 undefined'];
+    const allowedClassPatterns = ['5-120-1', '5-118-0'];
+    // const allowedClassPatterns = [
+    //     'MDL_mask_5-120-1', 
+    //     'MDL_outerWrapper_5-120-1'
+    // ];
     let interceptCount = 0;
 
     Element.prototype.appendChild = function(element) {

@@ -47,7 +47,7 @@ const JitService = {
     async getFirstPage(mallid, sellerTemp, filterType = 'all') {
         const data = {
             isJitForMms: false,       // 筛选未开jit的商品
-            // skcSiteStatus: 1,         // 筛选在售商品
+            skcSiteStatus: 1,         // 筛选在售商品
             page: 1,
             pageSize: 1
         };
@@ -181,19 +181,28 @@ const JitService = {
             
             if (!querySuccess) continue;
             
-            // 构建开JIT任务列表
+            // 构建开JIT任务列表 - 严格按照Python代码格式
             const jitTaskList = [];
             for (const item of dataList) {
                 const productSkcId = item.productSkcId;
                 const productId = item.productId;
-                if (productSkcId) {
-                    jitTaskList.push({ "productSkcId": productSkcId, "productId": productId });
+                // 确保两个字段都存在且为数字类型
+                if (productSkcId && productId) {
+                    jitTaskList.push({
+                        "productSkcId": typeof productSkcId === 'string' ? parseInt(productSkcId, 10) : productSkcId,
+                        "productId": typeof productId === 'string' ? parseInt(productId, 10) : productId
+                    });
                 }
             }
             
-            if (jitTaskList.length === 0) continue;
+            if (jitTaskList.length === 0) {
+                this.log(`第 ${page} 页没有有效的商品数据`);
+                continue;
+            }
             
-            // 批量开JIT
+            this.log(`第 ${page} 页有 ${jitTaskList.length} 个商品待开JIT`);
+            
+            // 批量开JIT - 严格按照Python代码的请求体格式
             const openJitPayload = { productSkcSubSellModeReqList: jitTaskList };
             
             for (let retry = 0; retry < this.MAX_RETRY; retry++) {
@@ -212,6 +221,7 @@ const JitService = {
                     
                     if (response.ok) {
                         const result = await response.json();
+                        // this.log(`开JIT响应: ${JSON.stringify(result)}`);
                         if (result.success) {
                             const failList = result.result?.handleProductFailedMsgList || [];
                             if (failList.length > 0) {
@@ -220,8 +230,6 @@ const JitService = {
                                     const reason = failItem.errorMsg || '开JIT失败';
                                     failReasons[reason] = (failReasons[reason] || 0) + 1;
                                 }
-                                // 有部分失败时输出详细响应
-                                this.log(`部分失败响应: ${JSON.stringify(result)}`);
                             } else {
                                 successCount += jitTaskList.length;
                             }

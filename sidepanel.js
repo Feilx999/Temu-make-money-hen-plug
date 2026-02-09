@@ -729,7 +729,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="config-group">
                             <span class="control-label">过滤:</span>
                             <select class="select-box" id="jitFilterSelect">
-                                <option value="all">全部商品</option>
+                                <option value="all">在售商品</option>
                                 <option value="first" disabled>仅首单商品</option>
                             </select>
                         </div>
